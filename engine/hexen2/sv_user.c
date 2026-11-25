@@ -397,7 +397,7 @@ static void SV_WaterMove (void)
 		wishspeed = sv_maxspeed.value;
 	}
 
-	if (sv_player->v.playerclass == CLASS_DEMON)	// Paladin Special Ability #1 - unrestricted movement in water
+	if (sv_player->v.playerclass == CLASS_DEMON && !depraved_class.integer)	// Paladin Special Ability #1 - unrestricted movement in water
 		wishspeed *= 0.5;
 	else if (sv_player->v.playerclass != CLASS_PALADIN) // Paladin Special Ability #1 - unrestricted movement in water
 		wishspeed *= 0.7;

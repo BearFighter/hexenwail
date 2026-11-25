@@ -97,6 +97,19 @@ cvar_t	sv_maxdatagram		= {"sv_maxdatagram", "0", CVAR_NONE};
  * change it. */
 cvar_t	sv_cheats		= {"sv_cheats", "0", CVAR_NONE};
 
+/* crawler-fork: engine-patches/depraved-class.  Slot 5 is the mission pack's
+ * Demoness, or, when a game sets depraved_class, our own Depraved class,
+ * available without the mission pack and with any progs.dat.  Not archived:
+ * the game sets it from its own autoexec.cfg. */
+cvar_t	depraved_class		= {"depraved_class", "0", CVAR_NONE};
+
+int PlayerClass_Count (void)
+{
+	if (depraved_class.integer || (gameflags & GAME_PORTALS))
+		return MAX_PLAYER_CLASS;
+	return MAX_PLAYER_CLASS - PORTALS_EXTRA_CLASSES;
+}
+
 /* max_edicts resolved and clamped, latched at map load.  Read this, not the
  * cvar, so a mid-map change cannot outrun the allocation. */
 int	sv_max_edicts = MAX_EDICTS;
@@ -249,6 +262,7 @@ void SV_Init (void)
 	Cvar_RegisterVariable (&sv_maxdatagram);
 	Cvar_SetCallback (&max_edicts, Max_Edicts_f);
 	Cvar_RegisterVariable (&sv_cheats);
+	Cvar_RegisterVariable (&depraved_class);	/* crawler-fork: engine-patches/depraved-class */
 	Cvar_RegisterVariable (&sv_gameplayfix_random);
 	Cvar_RegisterVariable (&pr_checkextension);
 	Cvar_RegisterVariable (&hexenwail_version);
