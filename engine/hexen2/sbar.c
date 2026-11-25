@@ -138,7 +138,7 @@ static int sb_sticky_artifact = -1;
 
 static float InventoryHideTime;
 
-extern const char *ClassNames[MAX_PLAYER_CLASS];	//from menu.c
+const char *M_ClassName (int cls);	//from menu.c, 1-based
 
 static const int AmuletAC[MAX_PLAYER_CLASS] =
 {
@@ -510,7 +510,7 @@ static void DrawLowerBar(void)
 	playerClass = cl_playerclass.integer;
 	if (playerClass < 1 || playerClass > MAX_PLAYER_CLASS)
 		playerClass = CLASS_PALADIN;	// Default to paladin
-	if (!(gameflags & GAME_PORTALS) && playerClass > MAX_PLAYER_CLASS - PORTALS_EXTRA_CLASSES)
+	if (PlayerClass_Count () < MAX_PLAYER_CLASS && playerClass > MAX_PLAYER_CLASS - PORTALS_EXTRA_CLASSES)
 		playerClass = CLASS_PALADIN;	// Default to paladin
 
 	// Backdrop
@@ -531,7 +531,7 @@ static void DrawLowerBar(void)
 	*/
 
 	// Stats
-	Sbar_DrawSmallString(11, 48, ClassNames[playerClass-1]);
+	Sbar_DrawSmallString(11, 48, M_ClassName (playerClass));
 
 	Sbar_DrawSmallString(11, 58, "int");
 	sprintf(tempStr, "%02d", (int)cl.v.intelligence);
@@ -675,7 +675,7 @@ static int CalcAC(void)
 	playerClass = cl_playerclass.integer -1;
 	if (playerClass < 0 || playerClass >= MAX_PLAYER_CLASS)
 		playerClass = CLASS_PALADIN - 1;	// Default to paladin
-	if (!(gameflags & GAME_PORTALS) && playerClass >= MAX_PLAYER_CLASS - PORTALS_EXTRA_CLASSES)
+	if (PlayerClass_Count () < MAX_PLAYER_CLASS && playerClass >= MAX_PLAYER_CLASS - PORTALS_EXTRA_CLASSES)
 		playerClass = CLASS_PALADIN - 1;	// Default to paladin
 
 	a = 0;

@@ -1149,7 +1149,7 @@ static void Host_Class_f (void)
 		return;
 	}
 #endif	/* OLD_DEMO */
-	if (newClass == CLASS_DEMON)
+	if (newClass == CLASS_DEMON && !depraved_class.integer)	/* crawler-fork */
 	{
 		if (!(gameflags & GAME_PORTALS))
 		{

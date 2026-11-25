@@ -264,6 +264,30 @@ static const char *DiffNames[MAX_PLAYER_CLASS][NUM_DIFFLEVELS] =
 	}
 };
 
+/* crawler-fork: engine-patches/depraved-class.  Slot 5 reads as Depraved
+ * when the game sets depraved_class.  All three take a 1-based class.
+ * Depraved uses the Paladin difficulty names (decision D3). */
+const char *M_ClassName (int cls)
+{
+	if (cls == CLASS_DEMON && depraved_class.integer)
+		return "Depraved";
+	return ClassNames[cls - 1];
+}
+
+static const char *M_ClassNameU (int cls)
+{
+	if (cls == CLASS_DEMON && depraved_class.integer)
+		return "DEPRAVED";
+	return ClassNamesU[cls - 1];
+}
+
+static const char *M_DiffName (int cls, int level)
+{
+	if (cls == CLASS_DEMON && depraved_class.integer)
+		return DiffNames[0][level];
+	return DiffNames[cls - 1][level];
+}
+
 
 //=============================================================================
 /* Mouse cursor support for menus */
@@ -1082,12 +1106,12 @@ static void M_Difficulty_Draw (void)
 
 	if (setup_class < 1 || setup_class > MAX_PLAYER_CLASS)
 		setup_class = MAX_PLAYER_CLASS;
-	if (setup_class > MAX_PLAYER_CLASS - PORTALS_EXTRA_CLASSES && !(gameflags & GAME_PORTALS))
+	if (setup_class > MAX_PLAYER_CLASS - PORTALS_EXTRA_CLASSES && PlayerClass_Count () < MAX_PLAYER_CLASS)
 		setup_class = MAX_PLAYER_CLASS - PORTALS_EXTRA_CLASSES;
 	setup_class--;
 
 	for (i = 0; i < NUM_DIFFLEVELS; ++i)
-		M_DrawBigString (72, 60 + (i * 20), DiffNames[setup_class][i]);
+		M_DrawBigString (72, 60 + (i * 20), M_DiffName (setup_class + 1, i));
 
 	{ int h = M_MouseToMenuItem(menu_mouse_y, 60, 20, DIFF_ITEMS); if (h >= 0) m_diff_cursor = h; }
 	f = (int)(realtime * 10)%8;
@@ -1193,7 +1217,7 @@ static void M_Class_Draw (void)
 {
 	int	i, f = MAX_PLAYER_CLASS;
 
-	if (! (gameflags & GAME_PORTALS))
+	if (PlayerClass_Count () < MAX_PLAYER_CLASS)
 		f = MAX_PLAYER_CLASS - PORTALS_EXTRA_CLASSES;
 #if DISALLOW_DEMONESS_IN_OLD_GAME
 	else if (!m_enter_portals)
@@ -1205,7 +1229,7 @@ static void M_Class_Draw (void)
 
 	ScrollTitle("gfx/menu/title2.lmp");
 	for (i = 0; i < f; ++i)
-		M_DrawBigString (72, 60 + (i * 20), ClassNamesU[i]);
+		M_DrawBigString (72, 60 + (i * 20), M_ClassNameU (i + 1));
 
 	{ int h = M_MouseToMenuItem(menu_mouse_y, 60, 20, f); if (h >= 0) m_class_cursor = h; }
 	f = (int)(realtime * 10)%8;
@@ -1219,7 +1243,7 @@ static void M_Class_Key (int key)
 {
 	int		f = MAX_PLAYER_CLASS;
 
-	if (! (gameflags & GAME_PORTALS))
+	if (PlayerClass_Count () < MAX_PLAYER_CLASS)
 		f = MAX_PLAYER_CLASS - PORTALS_EXTRA_CLASSES;
 #if DISALLOW_DEMONESS_IN_OLD_GAME
 	else if (!m_enter_portals)
@@ -2208,7 +2232,7 @@ static void M_Menu_Setup_f (void)
 	}
 	else
 #endif	/* OLD_DEMO */
-	if (!(gameflags & GAME_PORTALS))
+	if (PlayerClass_Count () < MAX_PLAYER_CLASS)
 	{
 		if (setup_class > MAX_PLAYER_CLASS - PORTALS_EXTRA_CLASSES)
 			setup_class = MAX_PLAYER_CLASS - PORTALS_EXTRA_CLASSES;
@@ -2271,7 +2295,7 @@ static void M_Setup_Draw (void)
 	M_Print (168, 56, setup_myname);
 
 	M_Print (64, 80, "Current Class: ");
-	M_Print (88, 88, ClassNames[setup_class-1]);
+	M_Print (88, 88, M_ClassName (setup_class));
 
 	M_Print (64, 104, "First color patch");
 	M_Print (64, 128, "Second color patch");
@@ -2376,7 +2400,7 @@ static void M_Setup_Key (int k)
 			setup_class--;
 			if (setup_class < 1)
 				setup_class = MAX_PLAYER_CLASS;
-			if (setup_class > MAX_PLAYER_CLASS - PORTALS_EXTRA_CLASSES && !(gameflags & GAME_PORTALS))
+			if (setup_class > MAX_PLAYER_CLASS - PORTALS_EXTRA_CLASSES && PlayerClass_Count () < MAX_PLAYER_CLASS)
 				setup_class = MAX_PLAYER_CLASS - PORTALS_EXTRA_CLASSES;
 		}
 		else if (setup_cursor == 3)
@@ -2403,7 +2427,7 @@ forward:
 			setup_class++;
 			if (setup_class > MAX_PLAYER_CLASS)
 				setup_class = 1;
-			if (setup_class > MAX_PLAYER_CLASS - PORTALS_EXTRA_CLASSES && !(gameflags & GAME_PORTALS))
+			if (setup_class > MAX_PLAYER_CLASS - PORTALS_EXTRA_CLASSES && PlayerClass_Count () < MAX_PLAYER_CLASS)
 				setup_class = 1;
 		}
 		else if (setup_cursor == 3)
@@ -8154,7 +8178,7 @@ static void M_Menu_LanConfig_f (void)
 	}
 	else
 #endif	/* OLD_DEMO */
-	if (!(gameflags & GAME_PORTALS))
+	if (PlayerClass_Count () < MAX_PLAYER_CLASS)
 	{
 		if (setup_class > MAX_PLAYER_CLASS - PORTALS_EXTRA_CLASSES)
 			setup_class = MAX_PLAYER_CLASS - PORTALS_EXTRA_CLASSES;
@@ -8190,7 +8214,7 @@ static void M_LanConfig_Draw (void)
 	if (JoiningGame)
 	{
 		M_Print (basex, lanConfig_cursor_table[1], "Class:");
-		M_Print (basex+8*7, lanConfig_cursor_table[1], ClassNames[setup_class]);
+		M_Print (basex+8*7, lanConfig_cursor_table[1], M_ClassName (setup_class + 1));
 
 		M_Print (basex, lanConfig_cursor_table[2], "Search for local games...");
 		M_Print (basex, 156, "Join game at:");
@@ -8314,7 +8338,7 @@ static void M_LanConfig_Key (int key)
 		setup_class--;
 		if (setup_class < 0)
 			setup_class = MAX_PLAYER_CLASS -1;
-		if (setup_class > MAX_PLAYER_CLASS - PORTALS_EXTRA_CLASSES - 1 && !(gameflags & GAME_PORTALS))
+		if (setup_class > MAX_PLAYER_CLASS - PORTALS_EXTRA_CLASSES - 1 && PlayerClass_Count () < MAX_PLAYER_CLASS)
 			setup_class = MAX_PLAYER_CLASS - PORTALS_EXTRA_CLASSES -1;
 		break;
 
@@ -8333,7 +8357,7 @@ static void M_LanConfig_Key (int key)
 		setup_class++;
 		if (setup_class > MAX_PLAYER_CLASS - 1)
 			setup_class = 0;
-		if (setup_class > MAX_PLAYER_CLASS - PORTALS_EXTRA_CLASSES - 1 && !(gameflags & GAME_PORTALS))
+		if (setup_class > MAX_PLAYER_CLASS - PORTALS_EXTRA_CLASSES - 1 && PlayerClass_Count () < MAX_PLAYER_CLASS)
 			setup_class = 0;
 		break;
 
@@ -8536,7 +8560,7 @@ static void M_Menu_GameOptions_f (void)
 	}
 	else
 #endif	/* OLD_DEMO */
-	if (!(gameflags & GAME_PORTALS))
+	if (PlayerClass_Count () < MAX_PLAYER_CLASS)
 	{
 		if (setup_class > MAX_PLAYER_CLASS - PORTALS_EXTRA_CLASSES)
 			setup_class = MAX_PLAYER_CLASS - PORTALS_EXTRA_CLASSES;
@@ -8613,11 +8637,11 @@ static void M_GameOptions_Draw (void)
 	}
 
 	M_Print (0+8 + 12*8, 108, "Class");
-	M_Print (160+8, 108, ClassNames[setup_class]);
+	M_Print (160+8, 108, M_ClassName (setup_class + 1));
 
 	M_Print (0+8 + 7*8, 116, "Difficulty");
 
-	M_Print (160+8, 116, DiffNames[setup_class][skill.integer]);
+	M_Print (160+8, 116, M_DiffName (setup_class + 1, skill.integer));
 
 	M_Print (0+8 + 7*8, 124, "Frag Limit");
 	if (fraglimit.integer == 0)
@@ -8723,7 +8747,7 @@ static void M_NetStart_Change (int dir)
 			setup_class = MAX_PLAYER_CLASS - 1;
 		else if(setup_class > MAX_PLAYER_CLASS - 1)
 			setup_class = 0;
-		if (setup_class > MAX_PLAYER_CLASS - PORTALS_EXTRA_CLASSES - 1 && !(gameflags & GAME_PORTALS))
+		if (setup_class > MAX_PLAYER_CLASS - PORTALS_EXTRA_CLASSES - 1 && PlayerClass_Count () < MAX_PLAYER_CLASS)
 			setup_class = (dir > 0)? 0 : MAX_PLAYER_CLASS - PORTALS_EXTRA_CLASSES - 1;
 		break;
 
@@ -9501,10 +9525,10 @@ static void M_MapSkill_Draw (void)
 	cls = cl_playerclass.integer;
 	if (cls < 1 || cls > MAX_PLAYER_CLASS)
 		cls = MAX_PLAYER_CLASS;
-	if (cls > MAX_PLAYER_CLASS - PORTALS_EXTRA_CLASSES && !(gameflags & GAME_PORTALS))
+	if (cls > MAX_PLAYER_CLASS - PORTALS_EXTRA_CLASSES && PlayerClass_Count () < MAX_PLAYER_CLASS)
 		cls = MAX_PLAYER_CLASS - PORTALS_EXTRA_CLASSES;
 	for (i = 0; i < NUM_DIFFLEVELS; ++i)
-		M_DrawBigString (72, 60 + (i * 20), DiffNames[cls - 1][i]);
+		M_DrawBigString (72, 60 + (i * 20), M_DiffName (cls, i));
 
 	if (mapskill_canresume)
 	{

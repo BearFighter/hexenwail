@@ -363,6 +363,8 @@ extern	cvar_t	startmap;
 extern	cvar_t	deathmatch;
 extern	cvar_t	coop;
 extern	cvar_t	randomclass;
+extern	cvar_t	depraved_class;		/* crawler-fork: engine-patches/depraved-class */
+int	PlayerClass_Count (void);	/* 4, or 5 with the mission pack or depraved_class */
 extern	cvar_t	fraglimit;
 extern	cvar_t	timelimit;
 

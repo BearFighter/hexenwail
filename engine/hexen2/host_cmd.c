@@ -1500,7 +1500,7 @@ static void Host_Name_f (void)
 	MSG_WriteString (&sv.reliable_datagram, host_client->name);
 }
 
-extern const char *ClassNames[MAX_PLAYER_CLASS];	//from menu.c
+const char *M_ClassName (int cls);	//from menu.c, 1-based
 static void Host_Class_f (void)
 {
 	float	newClass;
@@ -1509,7 +1509,7 @@ static void Host_Class_f (void)
 	{
 		Con_Printf("\"playerclass\" is %d (\"%s\")\n", cl_playerclass.integer,
 			   (cl_playerclass.integer < 1 || cl_playerclass.integer > MAX_PLAYER_CLASS) ?
-			   "unknown" : ClassNames[cl_playerclass.integer - 1]);
+			   "unknown" : M_ClassName (cl_playerclass.integer));
 		return;
 	}
 	if (Cmd_Argc () == 2)
@@ -1530,7 +1530,7 @@ static void Host_Class_f (void)
 		return;
 	}
 #endif	/* OLD_DEMO */
-	if (newClass == CLASS_DEMON)
+	if (newClass == CLASS_DEMON && !depraved_class.integer)	/* crawler-fork */
 	{
 		if (!(gameflags & GAME_PORTALS))
 		{
