@@ -20,6 +20,9 @@
  */
 
 #include "quakedef.h"
+#if !defined(H2W)
+#include "ctl.h"	/* crawler-fork: engine-patches/ctl */
+#endif
 #ifdef PLATFORM_WINDOWS
 #include <windows.h>
 #endif
@@ -4762,7 +4765,91 @@ static builtin_t pr_builtin[] =
 	/* Common to every build, which is the whole point of the number.
 	 * uhexen2-a5nn.35 */
 	PF_checkextension,	// 130
+
+#if !defined(H2W)
+	/* crawler-fork private block (engine-patches/ctl/SPEC.md).  131-199
+	 * stay free so upstream extensions can land after #130 without
+	 * renumbering ours; the assert below the table pins the numbers. */
+	PF_Fixme,		// 131
+	PF_Fixme,		// 132
+	PF_Fixme,		// 133
+	PF_Fixme,		// 134
+	PF_Fixme,		// 135
+	PF_Fixme,		// 136
+	PF_Fixme,		// 137
+	PF_Fixme,		// 138
+	PF_Fixme,		// 139
+	PF_Fixme,		// 140
+	PF_Fixme,		// 141
+	PF_Fixme,		// 142
+	PF_Fixme,		// 143
+	PF_Fixme,		// 144
+	PF_Fixme,		// 145
+	PF_Fixme,		// 146
+	PF_Fixme,		// 147
+	PF_Fixme,		// 148
+	PF_Fixme,		// 149
+	PF_Fixme,		// 150
+	PF_Fixme,		// 151
+	PF_Fixme,		// 152
+	PF_Fixme,		// 153
+	PF_Fixme,		// 154
+	PF_Fixme,		// 155
+	PF_Fixme,		// 156
+	PF_Fixme,		// 157
+	PF_Fixme,		// 158
+	PF_Fixme,		// 159
+	PF_Fixme,		// 160
+	PF_Fixme,		// 161
+	PF_Fixme,		// 162
+	PF_Fixme,		// 163
+	PF_Fixme,		// 164
+	PF_Fixme,		// 165
+	PF_Fixme,		// 166
+	PF_Fixme,		// 167
+	PF_Fixme,		// 168
+	PF_Fixme,		// 169
+	PF_Fixme,		// 170
+	PF_Fixme,		// 171
+	PF_Fixme,		// 172
+	PF_Fixme,		// 173
+	PF_Fixme,		// 174
+	PF_Fixme,		// 175
+	PF_Fixme,		// 176
+	PF_Fixme,		// 177
+	PF_Fixme,		// 178
+	PF_Fixme,		// 179
+	PF_Fixme,		// 180
+	PF_Fixme,		// 181
+	PF_Fixme,		// 182
+	PF_Fixme,		// 183
+	PF_Fixme,		// 184
+	PF_Fixme,		// 185
+	PF_Fixme,		// 186
+	PF_Fixme,		// 187
+	PF_Fixme,		// 188
+	PF_Fixme,		// 189
+	PF_Fixme,		// 190
+	PF_Fixme,		// 191
+	PF_Fixme,		// 192
+	PF_Fixme,		// 193
+	PF_Fixme,		// 194
+	PF_Fixme,		// 195
+	PF_Fixme,		// 196
+	PF_Fixme,		// 197
+	PF_Fixme,		// 198
+	PF_Fixme,		// 199
+	PF_ctl_send,		// float(string s, ...) ctl_send	= #200
+	PF_ctl_recv,		// string() ctl_recv			= #201
+	PF_ctl_tokenize,	// float(string s) tokenize		= #202
+	PF_ctl_argv,		// string(float n) argv			= #203
+	PF_ctl_stof,		// float(string s) stof			= #204
+#endif
 };
+
+#if !defined(H2W)
+COMPILE_TIME_ASSERT(ctl_builtins, sizeof(pr_builtin) / sizeof(pr_builtin[0]) == 205);
+#endif
 
 const builtin_t *pr_builtins = pr_builtin;
 int pr_numbuiltins = sizeof(pr_builtin) / sizeof(pr_builtin[0]);
