@@ -746,6 +746,7 @@ set(COMMON_SOURCES
     ${ENGINE_TOP}/hexen2/world.c
     ${ENGINE_TOP}/hexen2/net_main.c
     ${ENGINE_TOP}/hexen2/net_dgrm.c
+    ${ENGINE_TOP}/hexen2/ctl.c	# crawler-fork: loopback message channel (engine-patches/ctl)
     # From h2shared.  cvar.c, zone.c and cmd.c are not compiled here: all three
     # are ported, and the C originals are now only differential harness
     # fixtures.  The per-target constants and predicates the ports need come

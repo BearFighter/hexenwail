@@ -21,6 +21,7 @@
  */
 
 #include "quakedef.h"
+#include "ctl.h"	/* crawler-fork: engine-patches/ctl */
 
 server_t	sv;
 server_static_t	svs;
@@ -267,6 +268,7 @@ void SV_Init (void)
 	Cvar_RegisterVariable (&sv_ce_max_size);
 
 	SV_UserInit ();
+	CTL_Init ();	/* crawler-fork: engine-patches/ctl */
 
 	Cmd_AddCommand ("sv_edicts", Sv_Edicts_f);	
 	Cmd_AddCommand ("sv_protocol", SV_Protocol_f);
