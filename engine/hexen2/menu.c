@@ -34,6 +34,7 @@
 #endif
 #include "sbar.h"
 #include "menu_pointer.h"
+#include "inv_ui.h"
 #include "sdl_inc.h"
 #include <sys/stat.h>
 #include <time.h>
@@ -10116,6 +10117,55 @@ static void M_HWConnect_Key (int key)
 //=============================================================================
 /* Menu Subsystem */
 
+//=============================================================================
+/* INVENTORY MENU
+ *
+ * The full-screen Diablo-style item inventory (docs/items-inventory-spec.md).
+ * m_state == m_inventory is the screen; Key_SetDest(key_menu) routes keys and
+ * the pointer layer through the normal menu path.  The screen reads and writes
+ * the protocol-21 extended inventory through the inv_* slot builtins (#205-214)
+ * and reports player actions through the clc_inv_action queue (#215+).
+ */
+
+static inv_screen_t inv_screen;
+
+void M_Menu_Inventory_f (void)
+{
+	Key_SetDest (key_menu);
+	m_state = m_inventory;
+	m_entersound = true;
+	INV_ScreenInit (&inv_screen, &cl);
+}
+
+static void M_Inventory_Key (int k)
+{
+	switch (k)
+	{
+	case K_ESCAPE:
+		/* Close back to gameplay; the inventory never nests menus. */
+		Key_SetDest (key_game);
+		m_state = m_none;
+		break;
+
+	case K_UPARROW:
+	case K_DOWNARROW:
+		INV_ScreenKey (&inv_screen, k);
+		break;
+
+	case K_ENTER:
+		INV_ScreenKey (&inv_screen, k);
+		break;
+
+	default:
+		break;
+	}
+}
+
+static void M_Inventory_Draw (void)
+{
+	INV_ScreenDraw (&inv_screen);
+}
+
 void M_Init (void)
 {
 	char		*ptr;
@@ -10166,6 +10216,7 @@ void M_Init (void)
 	Cmd_AddCommand ("menu_maps", M_Menu_Maps_f);
 	Cmd_AddCommand ("menu_quit", M_Menu_Quit_f);
 	Cmd_AddCommand ("menu_class", M_Menu_Class2_f);
+	Cmd_AddCommand ("inventory", M_Menu_Inventory_f);
 
 	memset (old_bgmtype, 0, sizeof(old_bgmtype));
 	old_extmusic = -1;
@@ -10350,6 +10401,10 @@ void M_Draw (void)
 
 	case m_gameoptions:
 		M_GameOptions_Draw ();
+		break;
+
+	case m_inventory:
+		M_Inventory_Draw ();
 		break;
 
 	case m_search:
@@ -10845,6 +10900,10 @@ void M_Keydown (int key, qboolean repeat)
 		return;
 	case m_game:
 		M_Game_Key (key);
+		return;
+
+	case m_inventory:
+		M_Inventory_Key (key);
 		return;
 
 	case m_keys:

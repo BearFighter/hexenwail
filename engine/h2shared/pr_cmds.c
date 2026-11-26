@@ -4535,6 +4535,409 @@ static void PF_update_ex_item(void)
 	G_FLOAT(OFS_RETURN) = result;
 	//PR_RunError("%s: overflow", __thisfunc__);
 }
+
+/* ---- Hexenwail: inventory slot storage API (docs/items-inventory-spec.md) ----
+ * The engine owns the item bytes; the HexenC game code owns the rules.  These
+ * primitives are the dumb half: exact slot get/set, add/remove against the
+ * slot arrays, equipped-slot moves, and a per-client version counter the game
+ * code polls to recompute derived stats.  Max-stack, quest-page and two-handed
+ * validation belongs to HexenC; here we only range-check and set the protocol
+ * 21 change bits that the inventory delta path already knows how to send.
+ */
+
+#define	INV_MAX_INVENTORY_PAGES		8
+#define	INV_MAX_INVENTORY_SLOTS		32
+#define	INV_MAX_ITEM_STACK		127
+
+static float	inv_version_counts [1024];
+
+static client_t *INV_GetClient (entity ent)
+{
+	int idx = NUM_FOR_EDICT (ent);
+	if (idx < 1 || idx > SV_MAXCLIENTS)
+		PR_RunError ("Entity is not a client");
+	return &svs.clients [idx - 1];
+}
+
+static ex_inventory_page_t *INV_PageFor (client_t *client, float page)
+{
+	ex_inventory_page_t *p = client->ex_inventory;
+	int i;
+	if (page < 0 || page > 7)
+		return NULL;
+	for (i = 0; i < (int)page; i++)
+	{
+		if (!p)
+			return NULL;
+		p = p->next;
+	}
+	return p;
+}
+
+static float PF_inv_get_id (void)
+{
+	entity ent = G_EDICT (OFS_PARM0);
+	float page = G_FLOAT (OFS_PARM1);
+	float slot = G_FLOAT (OFS_PARM2);
+	client_t *client;
+	ex_inventory_page_t *p;
+	int i, idx;
+	if (page < 0 || page > 7)
+		return -1;
+	if (slot < 0 || slot > 31)
+		return -1;
+	client = INV_GetClient (ent);
+	p = client->ex_inventory;
+	for (i = 0; i < (int)page; i++)
+	{
+		if (!p)
+			return -1;
+		p = p->next;
+	}
+	if (!p)
+		return -1;
+	idx = (int)slot;
+	if (p->item_id[idx] == 0)
+		return -1;
+	return p->item_id[idx];
+}
+
+static float PF_inv_get_count (void)
+{
+	entity ent = G_EDICT (OFS_PARM0);
+	float page = G_FLOAT (OFS_PARM1);
+	float slot = G_FLOAT (OFS_PARM2);
+	client_t *client;
+	ex_inventory_page_t *p;
+	int i, idx;
+	if (page < 0 || page > 7)
+		return 0;
+	if (slot < 0 || slot > 31)
+		return 0;
+	client = INV_GetClient (ent);
+	p = client->ex_inventory;
+	for (i = 0; i < (int)page; i++)
+	{
+		if (!p)
+			return 0;
+		p = p->next;
+	}
+	if (!p)
+		return 0;
+	idx = (int)slot;
+	if (p->item_id[idx] == 0)
+		return 0;
+	return p->item_cnt[idx];
+}
+
+static float PF_inv_set_slot (void)
+{
+	entity ent = G_EDICT (OFS_PARM0);
+	float page = G_FLOAT (OFS_PARM1);
+	float slot = G_FLOAT (OFS_PARM2);
+	float id = G_FLOAT (OFS_PARM3);
+	float count = G_FLOAT (OFS_PARM4);
+	client_t *client;
+	ex_inventory_page_t *p;
+	int i, idx;
+	if (page < 0 || page > 7)
+		return 0;
+	if (slot < 0 || slot > 31)
+		return 0;
+	if (id < 0 || id > 255)
+		return 0;
+	client = INV_GetClient (ent);
+	p = client->ex_inventory;
+	for (i = 0; i < (int)page; i++)
+	{
+		if (!p)
+			return 0;
+		p = p->next;
+	}
+	if (!p)
+		return 0;
+	idx = (int)slot;
+	p->item_id[idx] = (int)id;
+	p->item_cnt[idx] = (int)count;
+	p->changed_items |= (1 << idx);
+	p->new_items |= (1 << idx);
+	return 1;
+}
+
+static float PF_inv_clear_slot (void)
+{
+	entity ent = G_EDICT (OFS_PARM0);
+	float page = G_FLOAT (OFS_PARM1);
+	float slot = G_FLOAT (OFS_PARM2);
+	client_t *client;
+	ex_inventory_page_t *p;
+	int i, idx;
+	if (page < 0 || page > 7)
+		return 0;
+	if (slot < 0 || slot > 31)
+		return 0;
+	client = INV_GetClient (ent);
+	p = client->ex_inventory;
+	for (i = 0; i < (int)page; i++)
+	{
+		if (!p)
+			return 0;
+		p = p->next;
+	}
+	if (!p)
+		return 0;
+	idx = (int)slot;
+	p->item_id[idx] = 0;
+	p->item_cnt[idx] = 0;
+	p->changed_items |= (1 << idx);
+	p->new_items |= (1 << idx);
+	return 1;
+}
+
+/* float(entity forent, float id, float count) inv_add_item -- stack on an
+ * existing same-id slot, else take the first free backpack cell; -1 when full. */
+static float PF_inv_add_item (void)
+{
+	entity ent = G_EDICT (OFS_PARM0);
+	float id = G_FLOAT (OFS_PARM1);
+	float count = G_FLOAT (OFS_PARM2);
+	client_t *client;
+	float added = 0;
+	int pageno;
+	for (pageno = 0; pageno < 3; pageno++)
+	{
+		float page = (float)pageno;
+		ex_inventory_page_t *p = INV_PageFor (client, page);
+		float slot;
+		if (!p)
+			break;
+		for (slot = (pageno == 0 ? 16 : 0); slot <= 31; slot++)
+		{
+			int s = (int)slot;
+			if (p->item_id[s] == (int)id && p->item_cnt[s] > 0)
+			{
+				float room = (float)INV_MAX_ITEM_STACK - (float)p->item_cnt[s];
+				float take = count - added;
+				if (take > room)
+					take = room;
+				if (take > 0)
+				{
+					added += take;
+					p->item_cnt[s] += (int)take;
+					p->changed_items |= (1 << s);
+					p->new_items |= (1 << s);
+				}
+			}
+			else if (p->item_id[s] == 0)
+			{
+				float take = count - added;
+				if (take > count)
+					take = count;
+				p->item_id[s] = (int)id;
+				p->item_cnt[s] = (int)take;
+				added += take;
+				p->changed_items |= (1 << s);
+				p->new_items |= (1 << s);
+				break;
+			}
+			if (added >= count)
+				break;
+		}
+		if (added >= count)
+			break;
+	}
+	if (added < count)
+		return -1;
+	return added;
+}
+
+/* float(entity forent, float id, float count) inv_remove_item -- return how
+ * many were removed; fewer than requested only when the player lacks them. */
+static float PF_inv_remove_item (void)
+{
+	entity ent = G_EDICT (OFS_PARM0);
+	float id = G_FLOAT (OFS_PARM1);
+	float count = G_FLOAT (OFS_PARM2);
+	client_t *client;
+	float removed = 0;
+	int pageno;
+	for (pageno = 0; pageno < 3 && removed < count; pageno++)
+	{
+		float page = (float)pageno;
+		ex_inventory_page_t *p = INV_PageFor (client, page);
+		float slot;
+		if (!p)
+			break;
+		for (slot = (pageno == 0 ? 16 : 0); slot <= 31; slot++)
+		{
+			int s = (int)slot;
+			if (p->item_id[s] == (int)id && p->item_cnt[s] > 0)
+			{
+				float take = count - removed;
+				if (take > (float)p->item_cnt[s])
+					take = (float)p->item_cnt[s];
+				p->item_cnt[s] -= (int)take;
+				removed += take;
+				if (p->item_cnt[s] <= 0)
+				{
+					p->item_id[s] = 0;
+					p->item_cnt[s] = 0;
+				}
+				p->changed_items |= (1 << s);
+				p->new_items |= (1 << s);
+			}
+			if (removed >= count)
+				break;
+		}
+	}
+	if (removed < count)
+		return -1;
+	return removed;
+}
+
+/* float(entity forent, float equip_slot) inv_get_equipped -- page 0 slot
+ * equip_slot holds the equipped item; -1 when nothing is equipped there. */
+static float PF_inv_get_equipped (void)
+{
+	entity ent = G_EDICT (OFS_PARM0);
+	float equip_slot = G_FLOAT (OFS_PARM1);
+	client_t *client;
+	ex_inventory_page_t *p;
+	int idx;
+	if (equip_slot < 0 || equip_slot > 12)
+		return -1;
+	client = INV_GetClient (ent);
+	p = client->ex_inventory;
+	if (!p)
+		return -1;
+	idx = (int)equip_slot;
+	if (p->item_id[idx] == 0)
+		return -1;
+	return p->item_id[idx];
+}
+
+/* float(entity forent, float equip_slot, float page, float slot) inv_equip --
+ * move the item from (page, slot) into equipment slot equip_slot; 1 on success. */
+static float PF_inv_equip (void)
+{
+	entity ent = G_EDICT (OFS_PARM0);
+	float equip_slot = G_FLOAT (OFS_PARM1);
+	float page = G_FLOAT (OFS_PARM2);
+	float slot = G_FLOAT (OFS_PARM3);
+	client_t *client;
+	ex_inventory_page_t *src;
+	ex_inventory_page_t *dst;
+	int i, sidx, didx;
+	float id, cnt;
+	if (equip_slot < 0 || equip_slot > 12)
+		return 0;
+	if (page < 0 || page > 7)
+		return 0;
+	client = INV_GetClient (ent);
+	src = client->ex_inventory;
+	if (page == 0)
+		dst = src;
+	else
+	{
+		dst = NULL;
+		for (i = 0; i < (int)page; i++)
+		{
+			if (!src)
+				return 0;
+			src = src->next;
+		}
+		dst = src;
+	}
+	if (!dst)
+		return 0;
+	if (slot < 0 || slot > 31)
+		return 0;
+	sidx = (int)slot;
+	didx = (int)equip_slot;
+	if (dst->item_id[sidx] == 0)
+		return 0;
+	if (page == 0 && slot == equip_slot)
+		return 1;
+	id = dst->item_id[sidx];
+	cnt = dst->item_cnt[sidx];
+	dst->item_id[sidx] = 0;
+	dst->item_cnt[sidx] = 0;
+	dst->changed_items |= (1 << sidx);
+	dst->new_items |= (1 << sidx);
+	{
+		ex_inventory_page_t *p0 = client->ex_inventory;
+		p0->item_id[didx] = (int)id;
+		p0->item_cnt[didx] = (int)cnt;
+		p0->changed_items |= (1 << didx);
+		p0->new_items |= (1 << didx);
+	}
+	return 1;
+}
+
+/* float(entity forent, float equip_slot) inv_unequip -- move the equipped item
+ * back into the backpack; 1 on success. */
+static float PF_inv_unequip (void)
+{
+	entity ent = G_EDICT (OFS_PARM0);
+	float equip_slot = G_FLOAT (OFS_PARM1);
+	client_t *client;
+	ex_inventory_page_t *p;
+	int i, sidx, dpage, dslot;
+	float id, cnt;
+	ex_inventory_page_t *dst = NULL;
+	float slot;
+	if (equip_slot < 0 || equip_slot > 12)
+		return 0;
+	client = INV_GetClient (ent);
+	p = client->ex_inventory;
+	if (!p)
+		return 0;
+	sidx = (int)equip_slot;
+	if (p->item_id[sidx] == 0)
+		return 0;
+	id = p->item_id[sidx];
+	cnt = p->item_cnt[sidx];
+	p->item_id[sidx] = 0;
+	p->item_cnt[sidx] = 0;
+	p->changed_items |= (1 << sidx);
+	p->new_items |= (1 << sidx);
+	/* first free backpack cell: page 0 slots 16..31, pages 1 and 2 full */
+	for (dpage = 0; dpage < 3; dpage++)
+	{
+		float page = (float)dpage;
+		ex_inventory_page_t *pp = INV_PageFor (client, page);
+		if (!pp)
+			break;
+		for (slot = (dpage == 0 ? 16 : 0); slot <= 31; slot++)
+		{
+			int s = (int)slot;
+			if (pp->item_id[s] == 0)
+			{
+				dst = pp;
+				dslot = s;
+				goto found;
+			}
+		}
+	}
+	return 0;
+found:
+	if (!dst)
+		return 0;
+	dst->item_id[dslot] = (int)id;
+	dst->item_cnt[dslot] = (int)cnt;
+	dst->changed_items |= (1 << dslot);
+	dst->new_items |= (1 << dslot);
+	return 1;
+}
+
+static float PF_inv_version (void)
+{
+	entity ent = G_EDICT (OFS_PARM0);
+	int idx = NUM_FOR_EDICT (ent);
+	if (idx < 1 || idx > SV_MAXCLIENTS)
+		return -1;
+	return inv_version_counts [idx - 1];
+}
 #endif	/* !H2W */
 
 
@@ -4844,11 +5247,23 @@ static builtin_t pr_builtin[] =
 	PF_ctl_tokenize,	// float(string s) tokenize		= #202
 	PF_ctl_argv,		// string(float n) argv			= #203
 	PF_ctl_stof,		// float(string s) stof			= #204
+	/* crawler-fork private block: Hexenwail inventory slot storage
+	 * (docs/items-inventory-spec.md).  205-214. */
+	PF_inv_get_id,		// float(entity forent, float page, float slot)		= #205
+	PF_inv_get_count,	// float(entity forent, float page, float slot)		= #206
+	PF_inv_set_slot,	// float(entity forent, float page, float slot, float id, float count)	= #207
+	PF_inv_clear_slot,	// float(entity forent, float page, float slot)		= #208
+	PF_inv_add_item,	// float(entity forent, float id, float count)		= #209
+	PF_inv_remove_item,	// float(entity forent, float id, float count)		= #210
+	PF_inv_get_equipped,	// float(entity forent, float equip_slot)		= #211
+	PF_inv_equip,		// float(entity forent, float equip_slot, float page, float slot)		= #212
+	PF_inv_unequip,	// float(entity forent, float equip_slot)		= #213
+	PF_inv_version,	// float(entity forent)		= #214
 #endif
 };
 
 #if !defined(H2W)
-COMPILE_TIME_ASSERT(ctl_builtins, sizeof(pr_builtin) / sizeof(pr_builtin[0]) == 205);
+COMPILE_TIME_ASSERT(ctl_builtins, sizeof(pr_builtin) / sizeof(pr_builtin[0]) == 215);
 #endif
 
 const builtin_t *pr_builtins = pr_builtin;

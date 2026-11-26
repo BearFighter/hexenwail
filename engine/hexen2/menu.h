@@ -56,7 +56,8 @@ enum m_state_e
 	m_mapskill,	/* skill / resume step after picking a map (GitHub #410) */
 	m_hwservers,
 	m_hwconnect,
-	m_confirm
+	m_confirm,
+	m_inventory		/* Diablo-style full-screen item inventory (docs/items-inventory-spec.md) */
 };
 
 extern	enum m_state_e	m_state;
@@ -72,6 +73,7 @@ void M_ToggleMenu_f (void);
 void M_Menu_Main_f (void);
 void M_Menu_Options_f (void);
 void M_Menu_Quit_f (void);
+void M_Menu_Inventory_f (void);
 
 /* rebuilds the Key Setup rows from the engine defaults plus the current
  * gamedir's bindlist.lst -- must be re-run whenever the gamedir changes */

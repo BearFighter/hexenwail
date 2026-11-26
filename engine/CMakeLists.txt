@@ -725,6 +725,7 @@ set(CLIENT_SOURCES
     ${ENGINE_TOP}/hexen2/console.c
     ${ENGINE_TOP}/hexen2/keys.c
     ${ENGINE_TOP}/hexen2/menu.c
+    ${ENGINE_TOP}/hexen2/inv_ui.c
     ${ENGINE_TOP}/hexen2/sbar.c
     ${ENGINE_TOP}/hexen2/view.c
     ${ENGINE_TOP}/hexen2/chase.c
