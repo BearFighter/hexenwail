@@ -11,8 +11,8 @@
  *     0-31) below it, ten columns wide and six rows tall.
  */
 
-#include "inv_ui.h"
 #include "quakedef.h"
+#include "inv_ui.h"
 #include "draw.h"
 #include "menu.h"
 #include "client.h"
@@ -32,7 +32,7 @@
 #define	INV_BACKPACK_CELLS	60
 #define	INV_SCREEN_MAX_Y	200
 
-void INV_ScreenInit (inv_screen_t *s, client_t *client)
+void INV_ScreenInit (inv_screen_t *s, client_state_t *client)
 {
 	s->client = client;
 	s->page = 0;
@@ -48,21 +48,15 @@ void INV_ScreenShutdown (inv_screen_t *s)
  * item id + count.  Returns the item id; 0 means empty.  Same walk the inv_*
  * slot builtins use, so the screen, the action queue and the storage cannot
  * disagree about what an item is. */
-static float Inv_Find (client_t *client, int page, int slot, float *count)
+static float Inv_Find (client_state_t *client, int page, int slot, float *count)
 {
-	ex_inventory_page_t *p = client->ex_inventory;
-	int i;
-	for (i = 0; i < page; i++)
-	{
-		if (!p)
-			return 0;
-		p = p->next;
-	}
-	if (!p)
+	ex_inventory_page_t *p;
+	if (page < 0 || page >= MAX_INVENTORY_EX_PAGES)
 	{
 		*count = 0;
 		return 0;
 	}
+	p = &client->ex_inventory[page];
 	if (slot < 0 || slot >= INV_SCREEN_SLOTS)
 	{
 		*count = 0;
@@ -78,7 +72,7 @@ static float Inv_Find (client_t *client, int page, int slot, float *count)
 }
 
 /* Item id -> icon path through the client's registered ex item list. */
-static void Inv_ItemIcon (client_t *client, float item_id, char *path, int size)
+static void Inv_ItemIcon (client_state_t *client, float item_id, char *path, int size)
 {
 	int i;
 	path[0] = 0;
@@ -99,7 +93,7 @@ static void Inv_ItemIcon (client_t *client, float item_id, char *path, int size)
 	}
 }
 
-static void Inv_DrawItem (client_t *client, int x, int y, float item_id, float count)
+static void Inv_DrawItem (client_state_t *client, int x, int y, float item_id, float count)
 {
 	char path[MAX_QPATH];
 	qpic_t *pic;
@@ -165,7 +159,7 @@ static int Inv_ScreenIndexFor (const inv_screen_t *s)
 
 void INV_ScreenDraw (const inv_screen_t *s)
 {
-	client_t *client = s->client;
+	client_state_t *client = s->client;
 	int li;
 
 	M_Print (INV_TITLE_X, INV_TITLE_Y, "Inventory");
@@ -205,9 +199,9 @@ void INV_ScreenDraw (const inv_screen_t *s)
 	}
 }
 
-int INV_ScreenClick (const inv_screen_t *s, int vx, int vy)
+int INV_ScreenClick (inv_screen_t *s, int vx, int vy)
 {
-	client_t *client = s->client;
+	client_state_t *client = s->client;
 	int slot;
 
 	for (slot = 0; slot < INV_SCREEN_EQUIP_SLOTS; slot++)
@@ -252,13 +246,13 @@ int INV_ScreenClick (const inv_screen_t *s, int vx, int vy)
 	return 0;
 }
 
-void INV_ScreenHover (const inv_screen_t *s, int vx, int vy)
+void INV_ScreenHover (inv_screen_t *s, int vx, int vy)
 {
 	/* Phase 1: hover moves the selection over an occupied cell. */
 	INV_ScreenClick (s, vx, vy);
 }
 
-int INV_ScreenKey (const inv_screen_t *s, int key)
+int INV_ScreenKey (inv_screen_t *s, int key)
 {
 	/* Phase 1: keyboard navigation over the backpack grid; Enter commits
 	 * a USE action on the selected cell through the clc_inv_action queue. */

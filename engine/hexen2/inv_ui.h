@@ -22,16 +22,16 @@
 /* Screen state owned by the m_inventory menu state and passed in/out. */
 typedef struct inv_screen_t
 {
-	client_t	*client;	/* whose inventory is on screen */
+	client_state_t	*client;	/* whose inventory is on screen */
 	int			page;		/* page being viewed / selection page */
 	int			slot;		/* selection slot on that page */
 } inv_screen_t;
 
-void INV_ScreenInit (inv_screen_t *s, client_t *client);
+void INV_ScreenInit (inv_screen_t *s, client_state_t *client);
 void INV_ScreenShutdown (inv_screen_t *s);
 void INV_ScreenDraw (const inv_screen_t *s);
-int		INV_ScreenKey (const inv_screen_t *s, int key);
-int		INV_ScreenClick (const inv_screen_t *s, int vx, int vy);
-void	INV_ScreenHover (const inv_screen_t *s, int vx, int vy);
+int		INV_ScreenKey (inv_screen_t *s, int key);
+int		INV_ScreenClick (inv_screen_t *s, int vx, int vy);
+void	INV_ScreenHover (inv_screen_t *s, int vx, int vy);
 
 #endif	/* __HX2_INV_UI_H */

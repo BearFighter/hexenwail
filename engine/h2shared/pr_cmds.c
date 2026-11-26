@@ -4547,442 +4547,331 @@ static void PF_update_ex_item(void)
 
 #define	INV_MAX_INVENTORY_PAGES		8
 #define	INV_MAX_INVENTORY_SLOTS		32
+#define	INV_MAX_EQUIP_SLOTS		13
 #define	INV_MAX_ITEM_STACK		127
+#define	INV_RETURN(v)	do { G_FLOAT (OFS_RETURN) = (float)(v); return; } while (0)
+#define	INV_MARK(p,s)	do { (p)->changed_items |= (1 << (s)); (p)->new_items |= (1 << (s)); } while (0)
 
 static float	inv_version_counts [1024];
 
-static client_t *INV_GetClient (entity ent)
+static client_t *INV_GetClient (edict_t *ent)
 {
 	int idx = NUM_FOR_EDICT (ent);
-	if (idx < 1 || idx > SV_MAXCLIENTS)
+	if (idx < 1 || idx > svs.maxclients)
 		PR_RunError ("Entity is not a client");
 	return &svs.clients [idx - 1];
 }
 
 static ex_inventory_page_t *INV_PageFor (client_t *client, float page)
 {
-	ex_inventory_page_t *p = client->ex_inventory;
-	int i;
-	if (page < 0 || page > 7)
+	if (page < 0 || page >= INV_MAX_INVENTORY_PAGES)
 		return NULL;
-	for (i = 0; i < (int)page; i++)
-	{
-		if (!p)
-			return NULL;
-		p = p->next;
-	}
-	return p;
+	return &client->ex_inventory [(int)page];
 }
 
-static float PF_inv_get_id (void)
+static void INV_BumpVersion (client_t *client)
 {
-	entity ent = G_EDICT (OFS_PARM0);
+	int idx = (int)(client - svs.clients) + 1;
+	if (idx >= 1 && idx < 1024)
+		inv_version_counts [idx - 1] += 1;
+}
+
+/* float(entity forent, float page, float slot) inv_get_id */
+static void PF_inv_get_id (void)
+{
+	edict_t *ent = G_EDICT (OFS_PARM0);
 	float page = G_FLOAT (OFS_PARM1);
 	float slot = G_FLOAT (OFS_PARM2);
-	client_t *client;
-	ex_inventory_page_t *p;
-	int i, idx;
-	if (page < 0 || page > 7)
-		return -1;
-	if (slot < 0 || slot > 31)
-		return -1;
-	client = INV_GetClient (ent);
-	p = client->ex_inventory;
-	for (i = 0; i < (int)page; i++)
-	{
-		if (!p)
-			return -1;
-		p = p->next;
-	}
-	if (!p)
-		return -1;
-	idx = (int)slot;
-	if (p->item_id[idx] == 0)
-		return -1;
-	return p->item_id[idx];
+	ex_inventory_page_t *p = INV_PageFor (INV_GetClient (ent), page);
+	if (!p || slot < 0 || slot >= INV_MAX_INVENTORY_SLOTS || !p->item_id [(int)slot])
+		INV_RETURN (-1);
+	INV_RETURN (p->item_id [(int)slot]);
 }
 
-static float PF_inv_get_count (void)
+/* float(entity forent, float page, float slot) inv_get_count */
+static void PF_inv_get_count (void)
 {
-	entity ent = G_EDICT (OFS_PARM0);
+	edict_t *ent = G_EDICT (OFS_PARM0);
 	float page = G_FLOAT (OFS_PARM1);
 	float slot = G_FLOAT (OFS_PARM2);
-	client_t *client;
-	ex_inventory_page_t *p;
-	int i, idx;
-	if (page < 0 || page > 7)
-		return 0;
-	if (slot < 0 || slot > 31)
-		return 0;
-	client = INV_GetClient (ent);
-	p = client->ex_inventory;
-	for (i = 0; i < (int)page; i++)
-	{
-		if (!p)
-			return 0;
-		p = p->next;
-	}
-	if (!p)
-		return 0;
-	idx = (int)slot;
-	if (p->item_id[idx] == 0)
-		return 0;
-	return p->item_cnt[idx];
+	ex_inventory_page_t *p = INV_PageFor (INV_GetClient (ent), page);
+	if (!p || slot < 0 || slot >= INV_MAX_INVENTORY_SLOTS || !p->item_id [(int)slot])
+		INV_RETURN (0);
+	INV_RETURN (p->item_cnt [(int)slot]);
 }
 
-static float PF_inv_set_slot (void)
+/* float(entity forent, float page, float slot, float id, float count)
+ * inv_set_slot -- exact slot write; rules belong to HexenC. */
+static void PF_inv_set_slot (void)
 {
-	entity ent = G_EDICT (OFS_PARM0);
+	edict_t *ent = G_EDICT (OFS_PARM0);
 	float page = G_FLOAT (OFS_PARM1);
 	float slot = G_FLOAT (OFS_PARM2);
 	float id = G_FLOAT (OFS_PARM3);
 	float count = G_FLOAT (OFS_PARM4);
-	client_t *client;
-	ex_inventory_page_t *p;
-	int i, idx;
-	if (page < 0 || page > 7)
-		return 0;
-	if (slot < 0 || slot > 31)
-		return 0;
-	if (id < 0 || id > 255)
-		return 0;
-	client = INV_GetClient (ent);
-	p = client->ex_inventory;
-	for (i = 0; i < (int)page; i++)
-	{
-		if (!p)
-			return 0;
-		p = p->next;
-	}
-	if (!p)
-		return 0;
-	idx = (int)slot;
-	p->item_id[idx] = (int)id;
-	p->item_cnt[idx] = (int)count;
-	p->changed_items |= (1 << idx);
-	p->new_items |= (1 << idx);
-	return 1;
+	client_t *client = INV_GetClient (ent);
+	ex_inventory_page_t *p = INV_PageFor (client, page);
+	if (!p || slot < 0 || slot >= INV_MAX_INVENTORY_SLOTS || id < 0 || id > 255)
+		INV_RETURN (0);
+	p->item_id [(int)slot] = (int)id;
+	p->item_cnt [(int)slot] = (int)count;
+	INV_MARK (p, (int)slot);
+	INV_BumpVersion (client);
+	INV_RETURN (1);
 }
 
-static float PF_inv_clear_slot (void)
+/* float(entity forent, float page, float slot) inv_clear_slot */
+static void PF_inv_clear_slot (void)
 {
-	entity ent = G_EDICT (OFS_PARM0);
+	edict_t *ent = G_EDICT (OFS_PARM0);
 	float page = G_FLOAT (OFS_PARM1);
 	float slot = G_FLOAT (OFS_PARM2);
-	client_t *client;
-	ex_inventory_page_t *p;
-	int i, idx;
-	if (page < 0 || page > 7)
-		return 0;
-	if (slot < 0 || slot > 31)
-		return 0;
-	client = INV_GetClient (ent);
-	p = client->ex_inventory;
-	for (i = 0; i < (int)page; i++)
-	{
-		if (!p)
-			return 0;
-		p = p->next;
-	}
-	if (!p)
-		return 0;
-	idx = (int)slot;
-	p->item_id[idx] = 0;
-	p->item_cnt[idx] = 0;
-	p->changed_items |= (1 << idx);
-	p->new_items |= (1 << idx);
-	return 1;
+	client_t *client = INV_GetClient (ent);
+	ex_inventory_page_t *p = INV_PageFor (client, page);
+	if (!p || slot < 0 || slot >= INV_MAX_INVENTORY_SLOTS)
+		INV_RETURN (0);
+	p->item_id [(int)slot] = 0;
+	p->item_cnt [(int)slot] = 0;
+	INV_MARK (p, (int)slot);
+	INV_BumpVersion (client);
+	INV_RETURN (1);
 }
 
-/* float(entity forent, float id, float count) inv_add_item -- stack on an
- * existing same-id slot, else take the first free backpack cell; -1 when full. */
-static float PF_inv_add_item (void)
+/* float(entity forent, float id, float count) inv_add_item -- stack onto an
+ * existing same-id cell, else take the first free backpack cell; -1 when full.
+ * Page 0 slots 16-31 plus pages 1-2 are the 60-cell backpack. */
+static void PF_inv_add_item (void)
 {
-	entity ent = G_EDICT (OFS_PARM0);
+	edict_t *ent = G_EDICT (OFS_PARM0);
 	float id = G_FLOAT (OFS_PARM1);
 	float count = G_FLOAT (OFS_PARM2);
-	client_t *client;
+	client_t *client = INV_GetClient (ent);
 	float added = 0;
-	int pageno;
-	for (pageno = 0; pageno < 3; pageno++)
+	int pageno, s;
+
+	if (id <= 0 || count <= 0)
+		INV_RETURN (-1);
+	for (pageno = 0; pageno < 3 && added < count; pageno++)
 	{
-		float page = (float)pageno;
-		ex_inventory_page_t *p = INV_PageFor (client, page);
-		float slot;
+		ex_inventory_page_t *p = INV_PageFor (client, (float)pageno);
 		if (!p)
 			break;
-		for (slot = (pageno == 0 ? 16 : 0); slot <= 31; slot++)
+		for (s = (pageno == 0 ? 16 : 0); s < INV_MAX_INVENTORY_SLOTS && added < count; s++)
 		{
-			int s = (int)slot;
-			if (p->item_id[s] == (int)id && p->item_cnt[s] > 0)
-			{
-				float room = (float)INV_MAX_ITEM_STACK - (float)p->item_cnt[s];
-				float take = count - added;
-				if (take > room)
-					take = room;
-				if (take > 0)
-				{
-					added += take;
-					p->item_cnt[s] += (int)take;
-					p->changed_items |= (1 << s);
-					p->new_items |= (1 << s);
-				}
-			}
-			else if (p->item_id[s] == 0)
-			{
-				float take = count - added;
-				if (take > count)
-					take = count;
-				p->item_id[s] = (int)id;
-				p->item_cnt[s] = (int)take;
-				added += take;
-				p->changed_items |= (1 << s);
-				p->new_items |= (1 << s);
-				break;
-			}
-			if (added >= count)
-				break;
+			float take;
+			if (p->item_id[s] != (int)id)
+				continue;
+			take = (float)INV_MAX_ITEM_STACK - (float)p->item_cnt[s];
+			if (take > count - added)
+				take = count - added;
+			if (take <= 0)
+				continue;
+			p->item_cnt[s] += (int)take;
+			added += take;
+			INV_MARK (p, s);
 		}
-		if (added >= count)
-			break;
 	}
-	if (added < count)
-		return -1;
-	return added;
+	for (pageno = 0; pageno < 3 && added < count; pageno++)
+	{
+		ex_inventory_page_t *p = INV_PageFor (client, (float)pageno);
+		if (!p)
+			break;
+		for (s = (pageno == 0 ? 16 : 0); s < INV_MAX_INVENTORY_SLOTS; s++)
+		{
+			float take = count - added;
+			if (p->item_id[s] != 0)
+				continue;
+			if (take > (float)INV_MAX_ITEM_STACK)
+				take = (float)INV_MAX_ITEM_STACK;
+			p->item_id[s] = (int)id;
+			p->item_cnt[s] = (int)take;
+			added += take;
+			INV_MARK (p, s);
+			break;
+		}
+	}
+	if (added <= 0)
+		INV_RETURN (-1);
+	INV_BumpVersion (client);
+	INV_RETURN (added);
 }
 
 /* float(entity forent, float id, float count) inv_remove_item -- return how
- * many were removed; fewer than requested only when the player lacks them. */
-static float PF_inv_remove_item (void)
+ * many were removed; -1 when the player does not have them all. */
+static void PF_inv_remove_item (void)
 {
-	entity ent = G_EDICT (OFS_PARM0);
+	edict_t *ent = G_EDICT (OFS_PARM0);
 	float id = G_FLOAT (OFS_PARM1);
 	float count = G_FLOAT (OFS_PARM2);
-	client_t *client;
+	client_t *client = INV_GetClient (ent);
 	float removed = 0;
-	int pageno;
+	int pageno, s;
+
 	for (pageno = 0; pageno < 3 && removed < count; pageno++)
 	{
-		float page = (float)pageno;
-		ex_inventory_page_t *p = INV_PageFor (client, page);
-		float slot;
+		ex_inventory_page_t *p = INV_PageFor (client, (float)pageno);
 		if (!p)
 			break;
-		for (slot = (pageno == 0 ? 16 : 0); slot <= 31; slot++)
+		for (s = (pageno == 0 ? 16 : 0); s < INV_MAX_INVENTORY_SLOTS && removed < count; s++)
 		{
-			int s = (int)slot;
-			if (p->item_id[s] == (int)id && p->item_cnt[s] > 0)
+			float take;
+			if (p->item_id[s] != (int)id || p->item_cnt[s] <= 0)
+				continue;
+			take = (float)p->item_cnt[s];
+			if (take > count - removed)
+				take = count - removed;
+			p->item_cnt[s] -= (int)take;
+			removed += take;
+			if (p->item_cnt[s] <= 0)
 			{
-				float take = count - removed;
-				if (take > (float)p->item_cnt[s])
-					take = (float)p->item_cnt[s];
-				p->item_cnt[s] -= (int)take;
-				removed += take;
-				if (p->item_cnt[s] <= 0)
-				{
-					p->item_id[s] = 0;
-					p->item_cnt[s] = 0;
-				}
-				p->changed_items |= (1 << s);
-				p->new_items |= (1 << s);
+				p->item_id[s] = 0;
+				p->item_cnt[s] = 0;
 			}
-			if (removed >= count)
-				break;
+			INV_MARK (p, s);
 		}
 	}
-	if (removed < count)
-		return -1;
-	return removed;
+	if (removed <= 0)
+		INV_RETURN (-1);
+	INV_BumpVersion (client);
+	INV_RETURN (removed);
 }
 
-/* float(entity forent, float equip_slot) inv_get_equipped -- page 0 slot
- * equip_slot holds the equipped item; -1 when nothing is equipped there. */
-static float PF_inv_get_equipped (void)
+/* float(entity forent, float equip_slot) inv_get_equipped */
+static void PF_inv_get_equipped (void)
 {
-	entity ent = G_EDICT (OFS_PARM0);
+	edict_t *ent = G_EDICT (OFS_PARM0);
 	float equip_slot = G_FLOAT (OFS_PARM1);
-	client_t *client;
-	ex_inventory_page_t *p;
-	int idx;
-	if (equip_slot < 0 || equip_slot > 12)
-		return -1;
-	client = INV_GetClient (ent);
-	p = client->ex_inventory;
-	if (!p)
-		return -1;
-	idx = (int)equip_slot;
-	if (p->item_id[idx] == 0)
-		return -1;
-	return p->item_id[idx];
+	ex_inventory_page_t *p = INV_PageFor (INV_GetClient (ent), 0);
+	if (!p || equip_slot < 0 || equip_slot >= INV_MAX_EQUIP_SLOTS || !p->item_id [(int)equip_slot])
+		INV_RETURN (-1);
+	INV_RETURN (p->item_id [(int)equip_slot]);
 }
 
 /* float(entity forent, float equip_slot, float page, float slot) inv_equip --
- * move the item from (page, slot) into equipment slot equip_slot; 1 on
- * success.  A displaced item in the destination is SWAPPED back into the
- * source cell, never discarded; nothing moves if anything is wrong. */
-static float PF_inv_equip (void)
+ * move the item into a page-0 equipment slot; a displaced item is swapped
+ * back into the source cell, never discarded. */
+static void PF_inv_equip (void)
 {
-	entity ent = G_EDICT (OFS_PARM0);
+	edict_t *ent = G_EDICT (OFS_PARM0);
 	float equip_slot = G_FLOAT (OFS_PARM1);
 	float page = G_FLOAT (OFS_PARM2);
 	float slot = G_FLOAT (OFS_PARM3);
-	client_t *client;
-	ex_inventory_page_t *src;
-	ex_inventory_page_t *p0;
-	int i, sidx, didx;
+	client_t *client = INV_GetClient (ent);
+	ex_inventory_page_t *src = INV_PageFor (client, page);
+	ex_inventory_page_t *dst = INV_PageFor (client, 0);
+	int sidx, didx;
 	float id, cnt, disp_id, disp_cnt;
-	if (equip_slot < 0 || equip_slot > 12)
-		return 0;
-	if (page < 0 || page > 7)
-		return 0;
-	if (slot < 0 || slot > 31)
-		return 0;
-	client = INV_GetClient (ent);
-	src = client->ex_inventory;
-	if (!src)
-		return 0;
-	for (i = 0; i < (int)page; i++)
-	{
-		src = src->next;
-		if (!src)
-			return 0;
-	}
+
+	if (!src || !dst || equip_slot < 0 || equip_slot >= INV_MAX_EQUIP_SLOTS ||
+		slot < 0 || slot >= INV_MAX_INVENTORY_SLOTS)
+		INV_RETURN (0);
 	sidx = (int)slot;
 	didx = (int)equip_slot;
-	if (src->item_id[sidx] == 0)
-		return 0;
+	if (!src->item_id[sidx])
+		INV_RETURN (0);
 	if (page == 0 && sidx == didx)
-		return 1;
-	p0 = client->ex_inventory;
-	if (!p0)
-		return 0;
+		INV_RETURN (1);
 	id = src->item_id[sidx];
 	cnt = src->item_cnt[sidx];
-	disp_id = p0->item_id[didx];
-	disp_cnt = p0->item_cnt[didx];
-	/* clear source */
-	src->item_id[sidx] = 0;
-	src->item_cnt[sidx] = 0;
-	src->changed_items |= (1 << sidx);
-	src->new_items |= (1 << sidx);
-	/* equipped takes the moved item */
-	p0->item_id[didx] = (int)id;
-	p0->item_cnt[didx] = (int)cnt;
-	p0->changed_items |= (1 << didx);
-	p0->new_items |= (1 << didx);
-	/* swap: displaced equipped item returns to the source cell */
+	disp_id = dst->item_id[didx];
+	disp_cnt = dst->item_cnt[didx];
 	src->item_id[sidx] = (int)disp_id;
 	src->item_cnt[sidx] = (int)disp_cnt;
-	src->changed_items |= (1 << sidx);
-	src->new_items |= (1 << sidx);
-	return 1;
+	dst->item_id[didx] = (int)id;
+	dst->item_cnt[didx] = (int)cnt;
+	INV_MARK (src, sidx);
+	INV_MARK (dst, didx);
+	INV_BumpVersion (client);
+	INV_RETURN (1);
 }
 
-/* float(entity forent, float equip_slot) inv_unequip -- move the equipped item
- * back into the backpack; 1 on success. */
-static float PF_inv_unequip (void)
+/* float(entity forent, float equip_slot) inv_unequip -- move the equipped
+ * item back into the first free backpack cell; refuses when the pack is full. */
+static void PF_inv_unequip (void)
 {
-	entity ent = G_EDICT (OFS_PARM0);
+	edict_t *ent = G_EDICT (OFS_PARM0);
 	float equip_slot = G_FLOAT (OFS_PARM1);
-	client_t *client;
-	ex_inventory_page_t *p, *dst = NULL;
-	int i, sidx, dpage, dslot = 0;
+	client_t *client = INV_GetClient (ent);
+	ex_inventory_page_t *src = INV_PageFor (client, 0);
+	ex_inventory_page_t *dst = NULL;
+	int sidx, dslot = 0, pageno, s;
 	float id, cnt;
-	float slot;
-	if (equip_slot < 0 || equip_slot > 12)
-		return 0;
-	client = INV_GetClient (ent);
-	p = client->ex_inventory;
-	if (!p)
-		return 0;
+
+	if (!src || equip_slot < 0 || equip_slot >= INV_MAX_EQUIP_SLOTS)
+		INV_RETURN (0);
 	sidx = (int)equip_slot;
-	if (p->item_id[sidx] == 0)
-		return 0;
-	/* first free backpack cell FIRST; never clear the equipped slot unless
-	 * the item has a home to return to. */
-	for (dpage = 0; dpage < 3; dpage++)
+	if (!src->item_id[sidx])
+		INV_RETURN (0);
+	for (pageno = 0; pageno < 3 && !dst; pageno++)
 	{
-		float page = (float)dpage;
-		ex_inventory_page_t *pp = INV_PageFor (client, page);
-		if (!pp)
+		ex_inventory_page_t *p = INV_PageFor (client, (float)pageno);
+		if (!p)
 			break;
-		for (slot = (dpage == 0 ? 16 : 0); slot <= 31; slot++)
+		for (s = (pageno == 0 ? 16 : 0); s < INV_MAX_INVENTORY_SLOTS; s++)
 		{
-			int s = (int)slot;
-			if (pp->item_id[s] == 0)
+			if (!p->item_id[s])
 			{
-				dst = pp;
+				dst = p;
 				dslot = s;
-				goto found;
+				break;
 			}
 		}
 	}
-	return 0;		/* full backpack: leave equipped untouched */
-found:
-	id = p->item_id[sidx];
-	cnt = p->item_cnt[sidx];
-	p->item_id[sidx] = 0;
-	p->item_cnt[sidx] = 0;
-	p->changed_items |= (1 << sidx);
-	p->new_items |= (1 << sidx);
 	if (!dst)
-		return 0;
+		INV_RETURN (0);
+	id = src->item_id[sidx];
+	cnt = src->item_cnt[sidx];
+	src->item_id[sidx] = 0;
+	src->item_cnt[sidx] = 0;
 	dst->item_id[dslot] = (int)id;
 	dst->item_cnt[dslot] = (int)cnt;
-	dst->changed_items |= (1 << dslot);
-	dst->new_items |= (1 << dslot);
-	return 1;
+	INV_MARK (src, sidx);
+	INV_MARK (dst, dslot);
+	INV_BumpVersion (client);
+	INV_RETURN (1);
 }
 
-static float PF_inv_version (void)
+/* float(entity forent) inv_version -- bumped on every inventory mutation. */
+static void PF_inv_version (void)
 {
-	entity ent = G_EDICT (OFS_PARM0);
+	edict_t *ent = G_EDICT (OFS_PARM0);
 	int idx = NUM_FOR_EDICT (ent);
-	if (idx < 1 || idx > SV_MAXCLIENTS)
-		return -1;
-	return inv_version_counts [idx - 1];
+	if (idx < 1 || idx >= 1024)
+		INV_RETURN (-1);
+	INV_RETURN (inv_version_counts [idx - 1]);
 }
 
-/* float(entity forent) inv_action_pending -- HexenC polls this from the owning
- * player's think function; returns 1 while a clc_inv_action is queued for this
- * client, else 0.  (docs/items-inventory-spec.md, sec 3.5) */
-static float PF_inv_action_pending (void)
+/* float(entity forent) inv_action_pending */
+static void PF_inv_action_pending (void)
 {
-	entity ent = G_EDICT (OFS_PARM0);
+	edict_t *ent = G_EDICT (OFS_PARM0);
 	client_t *client = INV_GetClient (ent);
-	return client->inv_action_valid ? 1.0f : 0.0f;
+	INV_RETURN (client->inv_action_valid ? 1.0f : 0.0f);
 }
 
-/* float(entity forent, float n) inv_action_field -- field selector:
- * 0=op, 1=a, 2=b, 3=c, 4=seq. */
-static float PF_inv_action_field (void)
+/* float(entity forent, float n) inv_action_field -- 0=op, 1=a, 2=b, 3=c, 4=seq */
+static void PF_inv_action_field (void)
 {
-	entity ent = G_EDICT (OFS_PARM0);
+	edict_t *ent = G_EDICT (OFS_PARM0);
 	float n = G_FLOAT (OFS_PARM1);
 	client_t *client = INV_GetClient (ent);
 	switch ((int)n)
 	{
-	case 0:
-		return (float)(int)client->inv_action_op;
-	case 1:
-		return (float)(int)client->inv_action_a;
-	case 2:
-		return (float)(int)client->inv_action_b;
-	case 3:
-		return (float)(int)client->inv_action_c;
-	case 4:
-		return (float)client->inv_action_seq;
+	case 0: INV_RETURN ((float)(int)client->inv_action_op);
+	case 1: INV_RETURN ((float)(int)client->inv_action_a);
+	case 2: INV_RETURN ((float)(int)client->inv_action_b);
+	case 3: INV_RETURN ((float)(int)client->inv_action_c);
+	case 4: INV_RETURN ((float)client->inv_action_seq);
 	}
-	return 0.0f;
+	INV_RETURN (0);
 }
 
-/* void(entity forent) inv_action_ack -- HexenC is done with (or dropped) the
- * queued action; clears the pending entry. */
+/* void(entity forent) inv_action_ack */
 static void PF_inv_action_ack (void)
 {
-	entity ent = G_EDICT (OFS_PARM0);
+	edict_t *ent = G_EDICT (OFS_PARM0);
 	client_t *client = INV_GetClient (ent);
-	client->inv_action_valid = false;
+	client->inv_action_valid = 0;
 }
 #endif	/* !H2W */
 
