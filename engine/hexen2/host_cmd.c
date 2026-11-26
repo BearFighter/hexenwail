@@ -1039,7 +1039,13 @@ static void Host_Loadgame_f (void)
 
 	ent = EDICT_NUM(1);
 
-	Cvar_SetValue ("_cl_playerclass", ent->v.playerclass);//this better be the same as above...
+	/* The gamestate stores the effective stock class progs understands.
+	 * Keep the editor class the player actually selected, when it is still
+	 * published, so the menu/HUD do not silently fall back after a load. */
+	if (Class_IsSelectable ((int)tempf) && (int)tempf >= CLASS_CUSTOM_FIRST)
+		Cvar_SetValue ("_cl_playerclass", tempf);
+	else
+		Cvar_SetValue ("_cl_playerclass", ent->v.playerclass);//this better be the same as above...
 
 	// this may be rudundant with the setting in PR_LoadProgs, but not sure so its here too
 	if (sv_globals.cl_playerclass)
@@ -1504,11 +1510,12 @@ const char *M_ClassName (int cls);	//from menu.c, 1-based
 static void Host_Class_f (void)
 {
 	float	newClass;
+	int		effectiveClass;
 
 	if (Cmd_Argc () == 1)
 	{
 		Con_Printf("\"playerclass\" is %d (\"%s\")\n", cl_playerclass.integer,
-			   (cl_playerclass.integer < 1 || cl_playerclass.integer > MAX_PLAYER_CLASS) ?
+			   !Class_IsSelectable (cl_playerclass.integer) ?
 			   "unknown" : M_ClassName (cl_playerclass.integer));
 		return;
 	}
@@ -1517,7 +1524,8 @@ static void Host_Class_f (void)
 	else
 		newClass = atof(Cmd_Args());
 
-	if (newClass < 0 || newClass > MAX_PLAYER_CLASS)
+	if (newClass < CLASS_PALADIN || newClass > MAX_PLAYER_CLASS ||
+		!Class_IsSelectable ((int)newClass))
 	{
 		Con_Printf("Invalid player class.\n");
 		return;
@@ -1530,7 +1538,7 @@ static void Host_Class_f (void)
 		return;
 	}
 #endif	/* OLD_DEMO */
-	if (newClass == CLASS_DEMON && !depraved_class.integer)	/* crawler-fork */
+	if (newClass == CLASS_DEMON && !ClassFiveActive ())	/* crawler-fork */
 	{
 		if (!(gameflags & GAME_PORTALS))
 		{
@@ -1547,21 +1555,25 @@ static void Host_Class_f (void)
 		}
 	}
 
+	effectiveClass = Class_EffectiveSource ((int)newClass);
+
 	if (cmd_source == src_command)
 	{
+		/* Keep the selected class for the menu/HUD; give progs a class it
+		 * actually implements (Paladin for unfinished editor classes). */
 		Cvar_SetValue ("_cl_playerclass", newClass);
 
 		// when class changes after map load, update cl_playerclass,
 		// cl_playerclass should probably only be used in worldspawn, though.
 		if (sv.active && sv_globals.cl_playerclass)
-			*sv_globals.cl_playerclass = newClass;
+			*sv_globals.cl_playerclass = effectiveClass;
 
 #if defined(H2W_INTEGRATED)
 		if (HWCL_Active ())
 		{
 			char	val[8];
 
-			q_snprintf (val, sizeof(val), "%d", (int)newClass);
+			q_snprintf (val, sizeof(val), "%d", effectiveClass);
 			HWCL_SetInfo ("playerclass", val);
 			return;
 		}
@@ -1577,10 +1589,11 @@ static void Host_Class_f (void)
 			newClass = host_client->edict->v.playerclass;
 		else if (host_client->playerclass)
 			newClass = host_client->playerclass;
+		effectiveClass = Class_EffectiveSource ((int)newClass);
 	}
 
-	host_client->playerclass = newClass;
-	host_client->edict->v.playerclass = newClass;
+	host_client->playerclass = effectiveClass;
+	host_client->edict->v.playerclass = effectiveClass;
 
 	// Change the weapon model used
 	*sv_globals.self = EDICT_TO_PROG(host_client->edict);
@@ -1589,7 +1602,7 @@ static void Host_Class_f (void)
 // send notification to all clients
 	MSG_WriteByte (&sv.reliable_datagram, svc_updateclass);
 	MSG_WriteByte (&sv.reliable_datagram, host_client - svs.clients);
-	MSG_WriteByte (&sv.reliable_datagram, (byte)newClass);
+	MSG_WriteByte (&sv.reliable_datagram, (byte)effectiveClass);
 }
 
 static void Host_Say (qboolean teamonly)

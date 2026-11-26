@@ -265,28 +265,64 @@ static const char *DiffNames[MAX_PLAYER_CLASS][NUM_DIFFLEVELS] =
 	}
 };
 
-/* crawler-fork: engine-patches/depraved-class.  Slot 5 reads as Depraved
- * when the game sets depraved_class.  All three take a 1-based class.
- * Depraved uses the Paladin difficulty names (decision D3). */
+/* crawler-fork: generic custom classes.  All three take a 1-based class.
+ * Slot 5 is the mission pack's Demoness unless the game opened it for our
+ * custom classes; slots 6..16 are named by the class editor cvars.  Custom
+ * classes inherit the Paladin difficulty titles until they get their own. */
 const char *M_ClassName (int cls)
 {
-	if (cls == CLASS_DEMON && depraved_class.integer)
-		return "Depraved";
+	if (cls == CLASS_DEMON)
+	{
+		if (gameflags & GAME_PORTALS)
+			return ClassNames[CLASS_DEMON - 1];
+		if (ClassFiveActive ())
+			return "Depraved";
+		return ClassNames[CLASS_DEMON - 1];
+	}
+	if (cls >= CLASS_CUSTOM_FIRST && cls <= MAX_PLAYER_CLASS)
+		return CustomClass_Name (cls);
+	if (cls < CLASS_PALADIN || cls > MAX_PLAYER_CLASS)
+		return "Unknown";
 	return ClassNames[cls - 1];
 }
 
 static const char *M_ClassNameU (int cls)
 {
-	if (cls == CLASS_DEMON && depraved_class.integer)
-		return "DEPRAVED";
-	return ClassNamesU[cls - 1];
+	static char upper[64];
+	const char *s = M_ClassName (cls);
+	int i;
+
+	for (i = 0; s[i] && i < (int)sizeof(upper) - 1; ++i)
+	{
+		upper[i] = (s[i] >= 'a' && s[i] <= 'z') ? (char)(s[i] - ('a' - 'A')) : s[i];
+	}
+	upper[i] = 0;
+	return upper;
 }
 
 static const char *M_DiffName (int cls, int level)
 {
-	if (cls == CLASS_DEMON && depraved_class.integer)
+	if (level < 0)
+		level = 0;
+	if (level >= NUM_DIFFLEVELS)
+		level = NUM_DIFFLEVELS - 1;
+	if (cls == CLASS_DEMON && ClassFiveActive () && !(gameflags & GAME_PORTALS))
+		return DiffNames[0][level];
+	if (cls >= CLASS_CUSTOM_FIRST || cls < CLASS_PALADIN || cls > MAX_PLAYER_CLASS)
 		return DiffNames[0][level];
 	return DiffNames[cls - 1][level];
+}
+
+/* Custom classes have no new portrait art; borrow the Paladin's so the menu
+ * cannot Sys_Error on a missing lmp (gl_draw.c treats that as fatal). */
+const char *M_ClassPic (int cls, const char *fmt)
+{
+	static char name[MAX_QPATH];
+
+	q_snprintf (name, sizeof(name), fmt, cls);
+	if (!FS_FileExists (name, NULL))
+		q_snprintf (name, sizeof(name), fmt, CLASS_PALADIN);
+	return name;
 }
 
 
@@ -1105,10 +1141,8 @@ static void M_Difficulty_Draw (void)
 
 	setup_class = cl_playerclass.integer;
 
-	if (setup_class < 1 || setup_class > MAX_PLAYER_CLASS)
-		setup_class = MAX_PLAYER_CLASS;
-	if (setup_class > MAX_PLAYER_CLASS - PORTALS_EXTRA_CLASSES && PlayerClass_Count () < MAX_PLAYER_CLASS)
-		setup_class = MAX_PLAYER_CLASS - PORTALS_EXTRA_CLASSES;
+	if (setup_class < 1 || setup_class > PlayerClass_Count ())
+		setup_class = PlayerClass_Count ();
 	setup_class--;
 
 	for (i = 0; i < NUM_DIFFLEVELS; ++i)
@@ -1216,14 +1250,7 @@ static int	m_class_cursor;
 
 static void M_Class_Draw (void)
 {
-	int	i, f = MAX_PLAYER_CLASS;
-
-	if (PlayerClass_Count () < MAX_PLAYER_CLASS)
-		f = MAX_PLAYER_CLASS - PORTALS_EXTRA_CLASSES;
-#if DISALLOW_DEMONESS_IN_OLD_GAME
-	else if (!m_enter_portals)
-		f = MAX_PLAYER_CLASS - PORTALS_EXTRA_CLASSES;
-#endif
+	int	i, f = PlayerClass_Count ();
 
 	if (m_class_cursor >= f)
 		m_class_cursor = 0;
@@ -1236,20 +1263,13 @@ static void M_Class_Draw (void)
 	f = (int)(realtime * 10)%8;
 	M_DrawTransPic (43, 54 + m_class_cursor * 20, Draw_CachePic(va("gfx/menu/menudot%i.lmp", f+1)) );
 
-	M_DrawPic (251, 54 + 21, Draw_CachePicNoTrans (va("gfx/cport%d.lmp", m_class_cursor + 1)));
+	M_DrawPic (251, 54 + 21, Draw_CachePicNoTrans (M_ClassPic (m_class_cursor + 1, "gfx/cport%d.lmp")));
 	M_DrawTransPic (242, 54, Draw_CachePic ("gfx/menu/frame.lmp"));
 }
 
 static void M_Class_Key (int key)
 {
-	int		f = MAX_PLAYER_CLASS;
-
-	if (PlayerClass_Count () < MAX_PLAYER_CLASS)
-		f = MAX_PLAYER_CLASS - PORTALS_EXTRA_CLASSES;
-#if DISALLOW_DEMONESS_IN_OLD_GAME
-	else if (!m_enter_portals)
-		f = MAX_PLAYER_CLASS - PORTALS_EXTRA_CLASSES;
-#endif
+	int		f = PlayerClass_Count ();
 
 	switch (key)
 	{
@@ -2223,8 +2243,8 @@ static void M_Menu_Setup_f (void)
 	setup_top = setup_oldtop = (cl_color.integer >> 4) & 15;
 	setup_bottom = setup_oldbottom = cl_color.integer & 15;
 	setup_class = cl_playerclass.integer;
-	if (setup_class < 1 || setup_class > MAX_PLAYER_CLASS)
-		setup_class = MAX_PLAYER_CLASS;
+	if (setup_class < 1 || setup_class > PlayerClass_Count ())
+		setup_class = PlayerClass_Count ();
 #if ENABLE_OLD_DEMO
 	if (gameflags & GAME_OLD_DEMO)
 	{
@@ -2233,11 +2253,8 @@ static void M_Menu_Setup_f (void)
 	}
 	else
 #endif	/* OLD_DEMO */
-	if (PlayerClass_Count () < MAX_PLAYER_CLASS)
-	{
-		if (setup_class > MAX_PLAYER_CLASS - PORTALS_EXTRA_CLASSES)
-			setup_class = MAX_PLAYER_CLASS - PORTALS_EXTRA_CLASSES;
-	}
+	if (setup_class > PlayerClass_Count ())
+		setup_class = PlayerClass_Count ();
 }
 
 #if defined(H2W_INTEGRATED)
@@ -2304,11 +2321,13 @@ static void M_Setup_Draw (void)
 	M_DrawTextBox (64, 156-8, 14, 1);
 	M_Print (72, 156, "Accept Changes");
 
-	p = Draw_CachePic (va("gfx/menu/netp%i.lmp",setup_class));
+	p = Draw_CachePic (M_ClassPic (setup_class, "gfx/menu/netp%i.lmp"));
 	M_BuildTranslationTable(setup_top, setup_bottom);
 
-	/* garymct */
-	M_DrawTransPicTranslate (220, 72, p, setup_class);
+	/* garymct.  M_ClassPic borrowed netp1.lmp for an editor class, so the
+	 * translation table has to use that same stock source; gl_draw indexes
+	 * menuplyr_pixels[p_class-1] and has no art for slots 6..16. */
+	M_DrawTransPicTranslate (220, 72, p, Class_EffectiveSource (setup_class));
 
 	M_DrawCharacter (56, setup_cursor_table [setup_cursor], 12+((int)(realtime*4)&1));
 
@@ -2400,9 +2419,9 @@ static void M_Setup_Key (int k)
 #endif	/* OLD_DEMO */
 			setup_class--;
 			if (setup_class < 1)
-				setup_class = MAX_PLAYER_CLASS;
-			if (setup_class > MAX_PLAYER_CLASS - PORTALS_EXTRA_CLASSES && PlayerClass_Count () < MAX_PLAYER_CLASS)
-				setup_class = MAX_PLAYER_CLASS - PORTALS_EXTRA_CLASSES;
+				setup_class = PlayerClass_Count ();
+			if (setup_class > PlayerClass_Count ())
+				setup_class = PlayerClass_Count ();
 		}
 		else if (setup_cursor == 3)
 			setup_top = setup_top - 1;
@@ -2426,9 +2445,7 @@ forward:
 			}
 #endif	/* OLD_DEMO */
 			setup_class++;
-			if (setup_class > MAX_PLAYER_CLASS)
-				setup_class = 1;
-			if (setup_class > MAX_PLAYER_CLASS - PORTALS_EXTRA_CLASSES && PlayerClass_Count () < MAX_PLAYER_CLASS)
+			if (setup_class > PlayerClass_Count ())
 				setup_class = 1;
 		}
 		else if (setup_cursor == 3)
@@ -8169,8 +8186,8 @@ static void M_Menu_LanConfig_f (void)
 	m_return_reason[0] = 0;
 
 	setup_class = cl_playerclass.integer;
-	if (setup_class < 1 || setup_class > MAX_PLAYER_CLASS)
-		setup_class = MAX_PLAYER_CLASS;
+	if (setup_class < 1 || setup_class > PlayerClass_Count ())
+		setup_class = PlayerClass_Count ();
 #if ENABLE_OLD_DEMO
 	if (gameflags & GAME_OLD_DEMO)
 	{
@@ -8179,11 +8196,8 @@ static void M_Menu_LanConfig_f (void)
 	}
 	else
 #endif	/* OLD_DEMO */
-	if (PlayerClass_Count () < MAX_PLAYER_CLASS)
-	{
-		if (setup_class > MAX_PLAYER_CLASS - PORTALS_EXTRA_CLASSES)
-			setup_class = MAX_PLAYER_CLASS - PORTALS_EXTRA_CLASSES;
-	}
+	if (setup_class > PlayerClass_Count ())
+		setup_class = PlayerClass_Count ();
 	setup_class--;
 }
 
@@ -8338,9 +8352,9 @@ static void M_LanConfig_Key (int key)
 #endif	/* OLD_DEMO */
 		setup_class--;
 		if (setup_class < 0)
-			setup_class = MAX_PLAYER_CLASS -1;
-		if (setup_class > MAX_PLAYER_CLASS - PORTALS_EXTRA_CLASSES - 1 && PlayerClass_Count () < MAX_PLAYER_CLASS)
-			setup_class = MAX_PLAYER_CLASS - PORTALS_EXTRA_CLASSES -1;
+			setup_class = PlayerClass_Count () - 1;
+		if (setup_class > PlayerClass_Count () - 1)
+			setup_class = PlayerClass_Count () - 1;
 		break;
 
 	case K_RIGHTARROW:
@@ -8356,9 +8370,9 @@ static void M_LanConfig_Key (int key)
 		}
 #endif	/* OLD_DEMO */
 		setup_class++;
-		if (setup_class > MAX_PLAYER_CLASS - 1)
+		if (setup_class > PlayerClass_Count () - 1)
 			setup_class = 0;
-		if (setup_class > MAX_PLAYER_CLASS - PORTALS_EXTRA_CLASSES - 1 && PlayerClass_Count () < MAX_PLAYER_CLASS)
+		if (setup_class > PlayerClass_Count () - 1)
 			setup_class = 0;
 		break;
 
@@ -8551,8 +8565,8 @@ static void M_Menu_GameOptions_f (void)
 		maxplayers = svs.maxclientslimit;
 
 	setup_class = cl_playerclass.integer;
-	if (setup_class < 1 || setup_class > MAX_PLAYER_CLASS)
-		setup_class = MAX_PLAYER_CLASS;
+	if (setup_class < 1 || setup_class > PlayerClass_Count ())
+		setup_class = PlayerClass_Count ();
 #if ENABLE_OLD_DEMO
 	if (gameflags & GAME_OLD_DEMO)
 	{
@@ -8561,11 +8575,8 @@ static void M_Menu_GameOptions_f (void)
 	}
 	else
 #endif	/* OLD_DEMO */
-	if (PlayerClass_Count () < MAX_PLAYER_CLASS)
-	{
-		if (setup_class > MAX_PLAYER_CLASS - PORTALS_EXTRA_CLASSES)
-			setup_class = MAX_PLAYER_CLASS - PORTALS_EXTRA_CLASSES;
-	}
+	if (setup_class > PlayerClass_Count ())
+		setup_class = PlayerClass_Count ();
 	setup_class--;
 
 	if (oem.integer)
@@ -8745,11 +8756,11 @@ static void M_NetStart_Change (int dir)
 #endif	/* OLD_DEMO */
 		setup_class += dir;
 		if (setup_class < 0)
-			setup_class = MAX_PLAYER_CLASS - 1;
-		else if(setup_class > MAX_PLAYER_CLASS - 1)
+			setup_class = PlayerClass_Count () - 1;
+		else if (setup_class > PlayerClass_Count () - 1)
 			setup_class = 0;
-		if (setup_class > MAX_PLAYER_CLASS - PORTALS_EXTRA_CLASSES - 1 && PlayerClass_Count () < MAX_PLAYER_CLASS)
-			setup_class = (dir > 0)? 0 : MAX_PLAYER_CLASS - PORTALS_EXTRA_CLASSES - 1;
+		if (setup_class > PlayerClass_Count () - 1)
+			setup_class = (dir > 0) ? 0 : PlayerClass_Count () - 1;
 		break;
 
 	case 5:
@@ -9524,10 +9535,8 @@ static void M_MapSkill_Draw (void)
 	M_PrintWhite ((320 - (int)strlen(mapskill_title) * 8) / 2, 44, mapskill_title);
 
 	cls = cl_playerclass.integer;
-	if (cls < 1 || cls > MAX_PLAYER_CLASS)
-		cls = MAX_PLAYER_CLASS;
-	if (cls > MAX_PLAYER_CLASS - PORTALS_EXTRA_CLASSES && PlayerClass_Count () < MAX_PLAYER_CLASS)
-		cls = MAX_PLAYER_CLASS - PORTALS_EXTRA_CLASSES;
+	if (cls < 1 || cls > PlayerClass_Count ())
+		cls = PlayerClass_Count ();
 	for (i = 0; i < NUM_DIFFLEVELS; ++i)
 		M_DrawBigString (72, 60 + (i * 20), M_DiffName (cls, i));
 

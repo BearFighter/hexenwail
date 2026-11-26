@@ -139,6 +139,7 @@ static int sb_sticky_artifact = -1;
 static float InventoryHideTime;
 
 const char *M_ClassName (int cls);	//from menu.c, 1-based
+const char *M_ClassPic (int cls, const char *fmt);	//from menu.c; falls back to Paladin art
 
 static const int AmuletAC[MAX_PLAYER_CLASS] =
 {
@@ -146,7 +147,18 @@ static const int AmuletAC[MAX_PLAYER_CLASS] =
 	4,		// Crusader
 	2,		// Necromancer
 	6,		// Assassin
-	6		// Demoness
+	6,		// Demoness
+	8,		// custom 1
+	8,		// custom 2
+	8,		// custom 3
+	8,		// custom 4
+	8,		// custom 5
+	8,		// custom 6
+	8,		// custom 7
+	8,		// custom 8
+	8,		// custom 9
+	8,		// custom 10
+	8		// custom 11
 };
 
 static const int BracerAC[MAX_PLAYER_CLASS] =
@@ -155,7 +167,18 @@ static const int BracerAC[MAX_PLAYER_CLASS] =
 	8,		// Crusader
 	4,		// Necromancer
 	2,		// Assassin
-	2		// Demoness
+	2,		// Demoness
+	6,		// custom 1
+	6,		// custom 2
+	6,		// custom 3
+	6,		// custom 4
+	6,		// custom 5
+	6,		// custom 6
+	6,		// custom 7
+	6,		// custom 8
+	6,		// custom 9
+	6,		// custom 10
+	6		// custom 11
 };
 
 static const int BreastplateAC[MAX_PLAYER_CLASS] =
@@ -164,7 +187,18 @@ static const int BreastplateAC[MAX_PLAYER_CLASS] =
 	6,		// Crusader
 	8,		// Necromancer
 	4,		// Assassin
-	4		// Demoness
+	4,		// Demoness
+	2,		// custom 1
+	2,		// custom 2
+	2,		// custom 3
+	2,		// custom 4
+	2,		// custom 5
+	2,		// custom 6
+	2,		// custom 7
+	2,		// custom 8
+	2,		// custom 9
+	2,		// custom 10
+	2		// custom 11
 };
 
 static const int HelmetAC[MAX_PLAYER_CLASS] =
@@ -173,7 +207,18 @@ static const int HelmetAC[MAX_PLAYER_CLASS] =
 	2,		// Crusader
 	6,		// Necromancer
 	8,		// Assassin
-	8		// Demoness
+	8,		// Demoness
+	4,		// custom 1
+	4,		// custom 2
+	4,		// custom 3
+	4,		// custom 4
+	4,		// custom 5
+	4,		// custom 6
+	4,		// custom 7
+	4,		// custom 8
+	4,		// custom 9
+	4,		// custom 10
+	4		// custom 11
 };
 
 // CODE --------------------------------------------------------------------
@@ -508,9 +553,8 @@ static void DrawLowerBar(void)
 	//playerClass = cl.v.playerclass;
 	// 1-based here; CalcAC() keeps the same value 0-based.  See the note there.
 	playerClass = cl_playerclass.integer;
-	if (playerClass < 1 || playerClass > MAX_PLAYER_CLASS)
-		playerClass = CLASS_PALADIN;	// Default to paladin
-	if (PlayerClass_Count () < MAX_PLAYER_CLASS && playerClass > MAX_PLAYER_CLASS - PORTALS_EXTRA_CLASSES)
+	if (playerClass < 1 || playerClass > PlayerClass_Count () ||
+		!Class_IsSelectable (playerClass))
 		playerClass = CLASS_PALADIN;	// Default to paladin
 
 	// Backdrop
@@ -573,7 +617,7 @@ static void DrawLowerBar(void)
 	}
 
 	// Portrait
-	sprintf(tempStr, "gfx/cport%d.lmp", playerClass);
+	q_strlcpy (tempStr, M_ClassPic (playerClass, "gfx/cport%d.lmp"), sizeof(tempStr));
 	Sbar_DrawPic(134, 50, Draw_CachePic(tempStr));
 
 	// Armor
@@ -673,9 +717,8 @@ static int CalcAC(void)
 	// fallback is CLASS_PALADIN - 1 rather than the 1 the comment used to
 	// claim was the Paladin.  uhexen2-9xhs.
 	playerClass = cl_playerclass.integer -1;
-	if (playerClass < 0 || playerClass >= MAX_PLAYER_CLASS)
-		playerClass = CLASS_PALADIN - 1;	// Default to paladin
-	if (PlayerClass_Count () < MAX_PLAYER_CLASS && playerClass >= MAX_PLAYER_CLASS - PORTALS_EXTRA_CLASSES)
+	if (playerClass < 0 || playerClass >= PlayerClass_Count () ||
+		!Class_IsSelectable (playerClass + 1))
 		playerClass = CLASS_PALADIN - 1;	// Default to paladin
 
 	a = 0;

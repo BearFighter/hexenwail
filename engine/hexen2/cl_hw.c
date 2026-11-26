@@ -5,6 +5,7 @@
  * normal Hexenwail client frame and is the first layer of the protocol mode.
  */
 #include "quakedef.h"
+#include "server.h"
 #include "cl_hw.h"
 #include "../hexenworld/shared/net.h"
 #include "../hexenworld/shared/huffman.h"
@@ -188,8 +189,12 @@ static hwcl_player_presentation_t hwcl_player_presentation[HWCL_MAX_CLIENTS];
 static int HWCL_ClampPlayerClass (int playerclass)
 {
 	if (playerclass < 1 || playerclass > MAX_PLAYER_CLASS)
-		return 1;
-	return playerclass;
+		return CLASS_PALADIN;
+	/* HexenWorld only has art for the five stock classes.  Editor classes
+	 * arrive as their effective stock source, just like the normal server
+	 * path.  Its own class 6 (Dwarf) was outside the old range as well, so
+	 * it still lands on Paladin when no custom class is published. */
+	return Class_EffectiveSource (playerclass);
 }
 
 static int HWCL_ClampPlayerColor (int color)
@@ -416,7 +421,7 @@ static void HWCL_LoadStrings (void)
 /* Returns false when the world model (index 1) did not load. */
 static qboolean HWCL_LoadModels (void)
 {
-	static const char *player_names[MAX_PLAYER_CLASS] = {
+	static const char *player_names[] = {
 		"models/paladin.mdl", "models/crusader.mdl", "models/necro.mdl",
 		"models/assassin.mdl", "models/succubus.mdl"
 	};
@@ -446,7 +451,9 @@ static qboolean HWCL_LoadModels (void)
 		cl.model_precache[i] = model;
 	}
 
-	for (i = 0; i < MAX_PLAYER_CLASS; i++)
+	/* Only the five stock models have art here; editor classes are displayed
+	 * through their stock source. */
+	for (i = 0; i < (int)(sizeof (player_names) / sizeof (player_names[0])); i++)
 		if (!player_models[i])
 			player_models[i] = Mod_ForName (player_names[i], false);
 

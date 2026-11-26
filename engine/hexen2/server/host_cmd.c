@@ -1127,6 +1127,7 @@ static void Host_Name_f (void)
 static void Host_Class_f (void)
 {
 	float	newClass;
+	int		effectiveClass;
 
 	if (cmd_source == src_command)
 		return;
@@ -1136,7 +1137,8 @@ static void Host_Class_f (void)
 	else
 		newClass = atof(Cmd_Args());
 
-	if (newClass < 0 || newClass > MAX_PLAYER_CLASS)
+	if (newClass < CLASS_PALADIN || newClass > MAX_PLAYER_CLASS ||
+		!Class_IsSelectable ((int)newClass))
 	{
 		Con_Printf("Invalid player class.\n");
 		return;
@@ -1149,7 +1151,7 @@ static void Host_Class_f (void)
 		return;
 	}
 #endif	/* OLD_DEMO */
-	if (newClass == CLASS_DEMON && !depraved_class.integer)	/* crawler-fork */
+	if (newClass == CLASS_DEMON && !ClassFiveActive ())	/* crawler-fork */
 	{
 		if (!(gameflags & GAME_PORTALS))
 		{
@@ -1174,8 +1176,11 @@ static void Host_Class_f (void)
 			newClass = host_client->playerclass;
 	}
 
-	host_client->playerclass = newClass;
-	host_client->edict->v.playerclass = newClass;
+	/* Unknown/unimplemented editor classes fall back to a stock class before
+	 * progs ever sees them. */
+	effectiveClass = Class_EffectiveSource ((int)newClass);
+	host_client->playerclass = effectiveClass;
+	host_client->edict->v.playerclass = effectiveClass;
 
 	// Change the weapon model used
 	*sv_globals.self = EDICT_TO_PROG(host_client->edict);
@@ -1184,7 +1189,7 @@ static void Host_Class_f (void)
 // send notification to all clients
 	MSG_WriteByte (&sv.reliable_datagram, svc_updateclass);
 	MSG_WriteByte (&sv.reliable_datagram, host_client - svs.clients);
-	MSG_WriteByte (&sv.reliable_datagram, (byte)newClass);
+	MSG_WriteByte (&sv.reliable_datagram, (byte)effectiveClass);
 }
 
 static void Host_Say (qboolean teamonly)

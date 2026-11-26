@@ -97,17 +97,135 @@ cvar_t	sv_maxdatagram		= {"sv_maxdatagram", "0", CVAR_NONE};
  * change it. */
 cvar_t	sv_cheats		= {"sv_cheats", "0", CVAR_NONE};
 
-/* crawler-fork: engine-patches/depraved-class.  Slot 5 is the mission pack's
- * Demoness, or, when a game sets depraved_class, our own Depraved class,
- * available without the mission pack and with any progs.dat.  Not archived:
- * the game sets it from its own autoexec.cfg. */
+/* crawler-fork: generic custom player classes.  Slot 5 stays the mission
+ * pack's Demoness or our Depraved class; publishing editor classes keeps that
+ * slot open as well, because menus count selectable classes contiguously and
+ * a custom class may name slot 5 as its stock source.  Slots 6..16 come from
+ * the class editor and are published in autoexec.cfg.  An unfinished class
+ * has a source class (Paladin by default); the engine sends that source to
+ * progs so the class plays as a complete stock class while the menu/HUD still
+ * show the editor's name. */
 cvar_t	depraved_class		= {"depraved_class", "0", CVAR_NONE};
+cvar_t	custom_class_count	= {"custom_class_count", "0", CVAR_NONE};
+cvar_t	custom_class_1_name	= {"custom_class_1_name", "Custom 1", CVAR_NONE};
+cvar_t	custom_class_2_name	= {"custom_class_2_name", "Custom 2", CVAR_NONE};
+cvar_t	custom_class_3_name	= {"custom_class_3_name", "Custom 3", CVAR_NONE};
+cvar_t	custom_class_4_name	= {"custom_class_4_name", "Custom 4", CVAR_NONE};
+cvar_t	custom_class_5_name	= {"custom_class_5_name", "Custom 5", CVAR_NONE};
+cvar_t	custom_class_6_name	= {"custom_class_6_name", "Custom 6", CVAR_NONE};
+cvar_t	custom_class_7_name	= {"custom_class_7_name", "Custom 7", CVAR_NONE};
+cvar_t	custom_class_8_name	= {"custom_class_8_name", "Custom 8", CVAR_NONE};
+cvar_t	custom_class_9_name	= {"custom_class_9_name", "Custom 9", CVAR_NONE};
+cvar_t	custom_class_10_name	= {"custom_class_10_name", "Custom 10", CVAR_NONE};
+cvar_t	custom_class_11_name	= {"custom_class_11_name", "Custom 11", CVAR_NONE};
+cvar_t	custom_class_1_source	= {"custom_class_1_source", "1", CVAR_NONE};
+cvar_t	custom_class_2_source	= {"custom_class_2_source", "1", CVAR_NONE};
+cvar_t	custom_class_3_source	= {"custom_class_3_source", "1", CVAR_NONE};
+cvar_t	custom_class_4_source	= {"custom_class_4_source", "1", CVAR_NONE};
+cvar_t	custom_class_5_source	= {"custom_class_5_source", "1", CVAR_NONE};
+cvar_t	custom_class_6_source	= {"custom_class_6_source", "1", CVAR_NONE};
+cvar_t	custom_class_7_source	= {"custom_class_7_source", "1", CVAR_NONE};
+cvar_t	custom_class_8_source	= {"custom_class_8_source", "1", CVAR_NONE};
+cvar_t	custom_class_9_source	= {"custom_class_9_source", "1", CVAR_NONE};
+cvar_t	custom_class_10_source	= {"custom_class_10_source", "1", CVAR_NONE};
+cvar_t	custom_class_11_source	= {"custom_class_11_source", "1", CVAR_NONE};
+
+static cvar_t *custom_class_names[MAX_CUSTOM_CLASSES] =
+{
+	&custom_class_1_name,
+	&custom_class_2_name,
+	&custom_class_3_name,
+	&custom_class_4_name,
+	&custom_class_5_name,
+	&custom_class_6_name,
+	&custom_class_7_name,
+	&custom_class_8_name,
+	&custom_class_9_name,
+	&custom_class_10_name,
+	&custom_class_11_name,
+};
+
+static cvar_t *custom_class_sources[MAX_CUSTOM_CLASSES] =
+{
+	&custom_class_1_source,
+	&custom_class_2_source,
+	&custom_class_3_source,
+	&custom_class_4_source,
+	&custom_class_5_source,
+	&custom_class_6_source,
+	&custom_class_7_source,
+	&custom_class_8_source,
+	&custom_class_9_source,
+	&custom_class_10_source,
+	&custom_class_11_source,
+};
+
+int CustomClass_Count (void)
+{
+	int n = custom_class_count.integer;
+
+	if (n < 0)
+		n = 0;
+	if (n > MAX_CUSTOM_CLASSES)
+		n = MAX_CUSTOM_CLASSES;
+	return n;
+}
+
+qboolean ClassFiveActive (void)
+{
+	/* A published editor class keeps slot 5 selectable: menus walk classes
+	 * from 1 to PlayerClass_Count(), and a custom class can use slot 5 as its
+	 * source.  Our own autoexec.cfg sets depraved_class as well. */
+	return (depraved_class.integer || CustomClass_Count () > 0 ||
+		(gameflags & GAME_PORTALS)) ? true : false;
+}
 
 int PlayerClass_Count (void)
 {
-	if (depraved_class.integer || (gameflags & GAME_PORTALS))
-		return MAX_PLAYER_CLASS;
-	return MAX_PLAYER_CLASS - PORTALS_EXTRA_CLASSES;
+	int n = 4 + (ClassFiveActive () ? 1 : 0) + CustomClass_Count ();
+
+	if (n > MAX_PLAYER_CLASS)
+		n = MAX_PLAYER_CLASS;
+	return n;
+}
+
+qboolean Class_IsSelectable (int cls)
+{
+	if (cls < CLASS_PALADIN || cls > MAX_PLAYER_CLASS)
+		return false;
+	if (cls <= CLASS_DEMON)
+		return (cls != CLASS_DEMON || ClassFiveActive ()) ? true : false;
+	return (cls - CLASS_CUSTOM_FIRST) < CustomClass_Count () ? true : false;
+}
+
+int Class_EffectiveSource (int cls)
+{
+	int src;
+
+	if (!Class_IsSelectable (cls))
+		return CLASS_PALADIN;
+	if (cls < CLASS_CUSTOM_FIRST)
+		return cls;
+	src = custom_class_sources[cls - CLASS_CUSTOM_FIRST]->integer;
+	if (src < CLASS_PALADIN || src > CLASS_DEMON)
+		src = CLASS_PALADIN;
+	return src;
+}
+
+const char *CustomClass_Name (int cls)
+{
+	static char name[32];
+	int i;
+
+	if (cls >= CLASS_CUSTOM_FIRST && cls <= MAX_PLAYER_CLASS)
+	{
+		i = cls - CLASS_CUSTOM_FIRST;
+		if (i < CustomClass_Count () && custom_class_names[i]->string[0])
+			return custom_class_names[i]->string;
+		q_snprintf (name, sizeof(name), "Custom %d", i + 1);
+		return name;
+	}
+	return "Custom";
 }
 
 /* max_edicts resolved and clamped, latched at map load.  Read this, not the
@@ -263,6 +381,29 @@ void SV_Init (void)
 	Cvar_SetCallback (&max_edicts, Max_Edicts_f);
 	Cvar_RegisterVariable (&sv_cheats);
 	Cvar_RegisterVariable (&depraved_class);	/* crawler-fork: engine-patches/depraved-class */
+	Cvar_RegisterVariable (&custom_class_count);	/* crawler-fork: custom classes */
+	Cvar_RegisterVariable (&custom_class_1_name);
+	Cvar_RegisterVariable (&custom_class_1_source);
+	Cvar_RegisterVariable (&custom_class_2_name);
+	Cvar_RegisterVariable (&custom_class_2_source);
+	Cvar_RegisterVariable (&custom_class_3_name);
+	Cvar_RegisterVariable (&custom_class_3_source);
+	Cvar_RegisterVariable (&custom_class_4_name);
+	Cvar_RegisterVariable (&custom_class_4_source);
+	Cvar_RegisterVariable (&custom_class_5_name);
+	Cvar_RegisterVariable (&custom_class_5_source);
+	Cvar_RegisterVariable (&custom_class_6_name);
+	Cvar_RegisterVariable (&custom_class_6_source);
+	Cvar_RegisterVariable (&custom_class_7_name);
+	Cvar_RegisterVariable (&custom_class_7_source);
+	Cvar_RegisterVariable (&custom_class_8_name);
+	Cvar_RegisterVariable (&custom_class_8_source);
+	Cvar_RegisterVariable (&custom_class_9_name);
+	Cvar_RegisterVariable (&custom_class_9_source);
+	Cvar_RegisterVariable (&custom_class_10_name);
+	Cvar_RegisterVariable (&custom_class_10_source);
+	Cvar_RegisterVariable (&custom_class_11_name);
+	Cvar_RegisterVariable (&custom_class_11_source);
 	Cvar_RegisterVariable (&sv_gameplayfix_random);
 	Cvar_RegisterVariable (&pr_checkextension);
 	Cvar_RegisterVariable (&hexenwail_version);

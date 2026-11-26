@@ -21,6 +21,11 @@
 
 #include "quakedef.h"
 
+#ifndef SERVERONLY
+/* engine/hexen2/sv_main.c; maps editor classes onto a stock gameplay class. */
+int Class_EffectiveSource (int cls);
+#endif
+
 #if defined(H2W) && !defined(SERVERONLY)
 #error SERVERONLY not defined for HW server
 #endif
@@ -2490,7 +2495,7 @@ void ED_LoadFromFile (const char *data)
 			skip = 0;
 
 			#ifndef SERVERONLY
-			switch (cl_playerclass.integer)
+			switch (Class_EffectiveSource (cl_playerclass.integer))
 			{
 			case CLASS_PALADIN:
 				if ((int)ent->v.spawnflags & SPAWNFLAG_NOT_PALADIN) {
@@ -3808,7 +3813,7 @@ void PR_LoadProgs (void)
 #if !defined(SERVERONLY)
 	// set the cl_playerclass value after sv_globals has been created
 	if (sv_globals.cl_playerclass)
-		*sv_globals.cl_playerclass = cl_playerclass.value;
+		*sv_globals.cl_playerclass = Class_EffectiveSource ((int)cl_playerclass.value);
 #endif
 #if defined(H2W)
 	// Zoid, find the spectator functions

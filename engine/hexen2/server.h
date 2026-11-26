@@ -376,7 +376,13 @@ extern	cvar_t	deathmatch;
 extern	cvar_t	coop;
 extern	cvar_t	randomclass;
 extern	cvar_t	depraved_class;		/* crawler-fork: engine-patches/depraved-class */
-int	PlayerClass_Count (void);	/* 4, or 5 with the mission pack or depraved_class */
+extern	cvar_t	custom_class_count;	/* crawler-fork: custom classes from the class editor */
+int	CustomClass_Count (void);
+qboolean ClassFiveActive (void);	/* mission pack, Depraved, or published custom classes */
+qboolean Class_IsSelectable (int cls);
+int	Class_EffectiveSource (int cls);	/* what progs sees for an unfinished class */
+const char *CustomClass_Name (int cls);
+int	PlayerClass_Count (void);	/* highest selectable class number */
 extern	cvar_t	fraglimit;
 extern	cvar_t	timelimit;
 

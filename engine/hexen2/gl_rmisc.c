@@ -44,11 +44,18 @@ const int	color_offsets[MAX_PLAYER_CLASS] =
 		0,
 		1 * 14 * 256,
 		2 * 14 * 256,
+		2 * 14 * 256,
+		2 * 14 * 256,
+		2 * 14 * 256,
+		2 * 14 * 256,
+		2 * 14 * 256,
+		2 * 14 * 256,
+		2 * 14 * 256,
+		2 * 14 * 256,
+		2 * 14 * 256,
+		2 * 14 * 256,
+		2 * 14 * 256,
 		2 * 14 * 256
-#if defined(H2W)
-		,
-		2 * 14 * 256
-#endif
 };
 
 cvar_t			gl_purge_maptex = {"gl_purge_maptex", "1", CVAR_NONE};
@@ -448,6 +455,14 @@ void R_TranslatePlayerSkin (int playernum)
 	byte		*sourceA, *sourceB, *colorA, *colorB;
 	int		playerclass = (int)cl.scores[playernum].playerclass;
 	int		s;
+
+	/* Editor classes are gameplay aliases of a stock class; their palette
+	 * and skin art come from that stock class, never from an uninitialised
+	 * custom slot. */
+	if (playerclass < 1 || playerclass > MAX_PLAYER_CLASS)
+		playerclass = CLASS_PALADIN;
+	if (playerclass > CLASS_DEMON)
+		playerclass = CLASS_PALADIN;
 //	char		texname[20];
 
 	for (i = 0; i < 256; i++)

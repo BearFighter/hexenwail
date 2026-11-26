@@ -271,8 +271,10 @@
 //
 // Player Classes
 //
-#define MAX_PLAYER_CLASS	5	/* total number of available player classes			*/
+#define MAX_PLAYER_CLASS	16	/* 4 stock + slot 5 (Demoness/Depraved) + 11 custom classes	*/
 #define PORTALS_EXTRA_CLASSES	1	/* number of player classes only available in the mission pack	*/
+#define CLASS_CUSTOM_FIRST	6	/* first class-editor class; 5 is the old fifth slot		*/
+#define MAX_CUSTOM_CLASSES	(MAX_PLAYER_CLASS - CLASS_CUSTOM_FIRST + 1)
 #define ABILITIES_STR_INDEX	400	/* starting number of class ability lines in strings.txt - 1	*/
 
 #define CLASS_PALADIN		1
@@ -284,6 +286,7 @@
 #define CLASS_ASSASSIN		CLASS_THEIF	/* another alias, progs actually use this one */
 #define CLASS_DEMON		5
 #define CLASS_SUCCUBUS		CLASS_DEMON	/* alias, the h2w progs actually use this one */
+#define CLASS_DEPRAVED		CLASS_DEMON	/* crawler-fork: our fifth slot */
 
 
 //#define BASE_ENT_ON		1
