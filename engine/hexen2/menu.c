@@ -10156,6 +10156,24 @@ static void M_Inventory_Key (int k)
 		INV_ScreenKey (&inv_screen, k);
 		break;
 
+	case 'e':
+	case 'E':
+		/* keyboard equip: HexenC derives the slot from the item registry. */
+		CL_SendInventoryAction (INVA_EQUIP, inv_screen.page, inv_screen.slot, 0);
+		break;
+
+	case 'u':
+	case 'U':
+		/* keyboard use. */
+		CL_SendInventoryAction (INVA_USE, inv_screen.page, inv_screen.slot, 0);
+		break;
+
+	case 'd':
+	case 'D':
+		/* keyboard drop. */
+		CL_SendInventoryAction (INVA_DROP, inv_screen.page, inv_screen.slot, 0);
+		break;
+
 	default:
 		break;
 	}
