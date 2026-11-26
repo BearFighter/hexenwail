@@ -553,6 +553,7 @@ void CL_BaseMove (usercmd_t *cmd);
 int CL_GetButtonBits (void);
 int CL_GetImpulse (void);
 void CL_SendMove (const usercmd_t *cmd);
+void CL_SendInventoryAction (int op, int a, int b, int c);
 
 //
 // cl_demo.c

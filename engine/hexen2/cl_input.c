@@ -716,6 +716,32 @@ void CL_SendMove (const usercmd_t *cmd)
 
 
 /*
+===============
+CL_SendInventoryAction
+
+Queue one clc_inv_action onto the reliable client->server stream
+(docs/items-inventory-spec.md, section 3.5).  Four bytes after the command
+byte: op, a, b, c.  The server stores the action for the owning player entity
+and the HexenC inventory code drains it with the inv_action_* builtins.
+CL_SendCmd flushes cls.message at the end of the frame.
+===============
+*/
+void CL_SendInventoryAction (int op, int a, int b, int c)
+{
+	if (cls.state != ca_connected)
+		return;			// not connected
+	if (cls.demoplayback)
+		return;			// not really connected
+
+	MSG_WriteByte (&cls.message, clc_inv_action);
+	MSG_WriteByte (&cls.message, (byte)op);
+	MSG_WriteByte (&cls.message, (byte)a);
+	MSG_WriteByte (&cls.message, (byte)b);
+	MSG_WriteByte (&cls.message, (byte)c);
+}
+
+
+/*
 ============
 CL_InitInput
 ============

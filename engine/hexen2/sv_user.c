@@ -801,6 +801,16 @@ nextmsg:
 				host_client->last_frame = MSG_ReadByte();
 				host_client->last_sequence = MSG_ReadByte();
 				break;
+
+			case clc_inv_action:
+				/* [byte] action, [byte] a, [byte] b, [byte] c */
+				host_client->inv_action_op = MSG_ReadByte();
+				host_client->inv_action_a = MSG_ReadByte();
+				host_client->inv_action_b = MSG_ReadByte();
+				host_client->inv_action_c = MSG_ReadByte();
+				host_client->inv_action_valid = true;
+				host_client->inv_action_seq += 1;
+				break;
 			}
 		}
 	} while (ret == 1);

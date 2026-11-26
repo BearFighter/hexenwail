@@ -4817,7 +4817,9 @@ static float PF_inv_get_equipped (void)
 }
 
 /* float(entity forent, float equip_slot, float page, float slot) inv_equip --
- * move the item from (page, slot) into equipment slot equip_slot; 1 on success. */
+ * move the item from (page, slot) into equipment slot equip_slot; 1 on
+ * success.  A displaced item in the destination is SWAPPED back into the
+ * source cell, never discarded; nothing moves if anything is wrong. */
 static float PF_inv_equip (void)
 {
 	entity ent = G_EDICT (OFS_PARM0);
@@ -4826,51 +4828,53 @@ static float PF_inv_equip (void)
 	float slot = G_FLOAT (OFS_PARM3);
 	client_t *client;
 	ex_inventory_page_t *src;
-	ex_inventory_page_t *dst;
+	ex_inventory_page_t *p0;
 	int i, sidx, didx;
-	float id, cnt;
+	float id, cnt, disp_id, disp_cnt;
 	if (equip_slot < 0 || equip_slot > 12)
 		return 0;
 	if (page < 0 || page > 7)
 		return 0;
-	client = INV_GetClient (ent);
-	src = client->ex_inventory;
-	if (page == 0)
-		dst = src;
-	else
-	{
-		dst = NULL;
-		for (i = 0; i < (int)page; i++)
-		{
-			if (!src)
-				return 0;
-			src = src->next;
-		}
-		dst = src;
-	}
-	if (!dst)
-		return 0;
 	if (slot < 0 || slot > 31)
 		return 0;
+	client = INV_GetClient (ent);
+	src = client->ex_inventory;
+	if (!src)
+		return 0;
+	for (i = 0; i < (int)page; i++)
+	{
+		src = src->next;
+		if (!src)
+			return 0;
+	}
 	sidx = (int)slot;
 	didx = (int)equip_slot;
-	if (dst->item_id[sidx] == 0)
+	if (src->item_id[sidx] == 0)
 		return 0;
-	if (page == 0 && slot == equip_slot)
+	if (page == 0 && sidx == didx)
 		return 1;
-	id = dst->item_id[sidx];
-	cnt = dst->item_cnt[sidx];
-	dst->item_id[sidx] = 0;
-	dst->item_cnt[sidx] = 0;
-	dst->changed_items |= (1 << sidx);
-	dst->new_items |= (1 << sidx);
-	{
-		ex_inventory_page_t *p0 = client->ex_inventory;
-		p0->item_id[didx] = (int)id;
-		p0->item_cnt[didx] = (int)cnt;
-		p0->changed_items |= (1 << didx);
-		p0->new_items |= (1 << didx);
-	}
+	p0 = client->ex_inventory;
+	if (!p0)
+		return 0;
+	id = src->item_id[sidx];
+	cnt = src->item_cnt[sidx];
+	disp_id = p0->item_id[didx];
+	disp_cnt = p0->item_cnt[didx];
+	/* clear source */
+	src->item_id[sidx] = 0;
+	src->item_cnt[sidx] = 0;
+	src->changed_items |= (1 << sidx);
+	src->new_items |= (1 << sidx);
+	/* equipped takes the moved item */
+	p0->item_id[didx] = (int)id;
+	p0->item_cnt[didx] = (int)cnt;
+	p0->changed_items |= (1 << didx);
+	p0->new_items |= (1 << didx);
+	/* swap: displaced equipped item returns to the source cell */
+	src->item_id[sidx] = (int)disp_id;
+	src->item_cnt[sidx] = (int)disp_cnt;
+	src->changed_items |= (1 << sidx);
+	src->new_items |= (1 << sidx);
 	return 1;
 }
 
@@ -4881,10 +4885,9 @@ static float PF_inv_unequip (void)
 	entity ent = G_EDICT (OFS_PARM0);
 	float equip_slot = G_FLOAT (OFS_PARM1);
 	client_t *client;
-	ex_inventory_page_t *p;
-	int i, sidx, dpage, dslot;
+	ex_inventory_page_t *p, *dst = NULL;
+	int i, sidx, dpage, dslot = 0;
 	float id, cnt;
-	ex_inventory_page_t *dst = NULL;
 	float slot;
 	if (equip_slot < 0 || equip_slot > 12)
 		return 0;
@@ -4895,13 +4898,8 @@ static float PF_inv_unequip (void)
 	sidx = (int)equip_slot;
 	if (p->item_id[sidx] == 0)
 		return 0;
-	id = p->item_id[sidx];
-	cnt = p->item_cnt[sidx];
-	p->item_id[sidx] = 0;
-	p->item_cnt[sidx] = 0;
-	p->changed_items |= (1 << sidx);
-	p->new_items |= (1 << sidx);
-	/* first free backpack cell: page 0 slots 16..31, pages 1 and 2 full */
+	/* first free backpack cell FIRST; never clear the equipped slot unless
+	 * the item has a home to return to. */
 	for (dpage = 0; dpage < 3; dpage++)
 	{
 		float page = (float)dpage;
@@ -4919,8 +4917,14 @@ static float PF_inv_unequip (void)
 			}
 		}
 	}
-	return 0;
+	return 0;		/* full backpack: leave equipped untouched */
 found:
+	id = p->item_id[sidx];
+	cnt = p->item_cnt[sidx];
+	p->item_id[sidx] = 0;
+	p->item_cnt[sidx] = 0;
+	p->changed_items |= (1 << sidx);
+	p->new_items |= (1 << sidx);
 	if (!dst)
 		return 0;
 	dst->item_id[dslot] = (int)id;
@@ -4937,6 +4941,48 @@ static float PF_inv_version (void)
 	if (idx < 1 || idx > SV_MAXCLIENTS)
 		return -1;
 	return inv_version_counts [idx - 1];
+}
+
+/* float(entity forent) inv_action_pending -- HexenC polls this from the owning
+ * player's think function; returns 1 while a clc_inv_action is queued for this
+ * client, else 0.  (docs/items-inventory-spec.md, sec 3.5) */
+static float PF_inv_action_pending (void)
+{
+	entity ent = G_EDICT (OFS_PARM0);
+	client_t *client = INV_GetClient (ent);
+	return client->inv_action_valid ? 1.0f : 0.0f;
+}
+
+/* float(entity forent, float n) inv_action_field -- field selector:
+ * 0=op, 1=a, 2=b, 3=c, 4=seq. */
+static float PF_inv_action_field (void)
+{
+	entity ent = G_EDICT (OFS_PARM0);
+	float n = G_FLOAT (OFS_PARM1);
+	client_t *client = INV_GetClient (ent);
+	switch ((int)n)
+	{
+	case 0:
+		return (float)(int)client->inv_action_op;
+	case 1:
+		return (float)(int)client->inv_action_a;
+	case 2:
+		return (float)(int)client->inv_action_b;
+	case 3:
+		return (float)(int)client->inv_action_c;
+	case 4:
+		return (float)client->inv_action_seq;
+	}
+	return 0.0f;
+}
+
+/* void(entity forent) inv_action_ack -- HexenC is done with (or dropped) the
+ * queued action; clears the pending entry. */
+static void PF_inv_action_ack (void)
+{
+	entity ent = G_EDICT (OFS_PARM0);
+	client_t *client = INV_GetClient (ent);
+	client->inv_action_valid = false;
 }
 #endif	/* !H2W */
 
@@ -5259,11 +5305,14 @@ static builtin_t pr_builtin[] =
 	PF_inv_equip,		// float(entity forent, float equip_slot, float page, float slot)		= #212
 	PF_inv_unequip,	// float(entity forent, float equip_slot)		= #213
 	PF_inv_version,	// float(entity forent)		= #214
+	PF_inv_action_pending,	// float(entity forent)		= #215
+	PF_inv_action_field,	// float(entity forent, float n)	= #216
+	PF_inv_action_ack,	// void(entity forent)		= #217
 #endif
 };
 
 #if !defined(H2W)
-COMPILE_TIME_ASSERT(ctl_builtins, sizeof(pr_builtin) / sizeof(pr_builtin[0]) == 215);
+COMPILE_TIME_ASSERT(ctl_builtins, sizeof(pr_builtin) / sizeof(pr_builtin[0]) == 218);
 #endif
 
 const builtin_t *pr_builtins = pr_builtin;

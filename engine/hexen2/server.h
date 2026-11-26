@@ -245,6 +245,18 @@ typedef struct client_s
 	byte		current_frame, last_frame;
 	byte		current_sequence, last_sequence;
 
+	/* Inventory action queue (docs/items-inventory-spec.md, section 3.5).
+	 * The owning client queues UI intent as a clc_inv_action; the HexenC
+	 * player entity drains it through the inv_action_* builtins (#215-217),
+	 * which validate it against the slot builtins (#205-214) and perform the
+	 * storage move.  A completed or dropped action acks and clears here. */
+	int			inv_action_seq;		// bumped every queued action
+	qboolean		inv_action_valid;	// a valid action is queued
+	byte			inv_action_op;		// action code: MOVE/SWAP/... see HexenC
+	byte			inv_action_a;
+	byte			inv_action_b;
+	byte			inv_action_c;
+
 // mission pack, objectives strings
 	unsigned int	info_mask, info_mask2;
 	ex_inventory_page_t *ex_inventory;

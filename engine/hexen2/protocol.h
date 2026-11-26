@@ -154,6 +154,20 @@
 #define	clc_stringcmd		4	// [string] message
 #define	clc_inv_select		5
 #define	clc_frame		6
+#define	clc_inv_action		7	// [byte] action, [byte] a, [byte] b, [byte] c
+					// (docs/items-inventory-spec.md, sec 3.5)
+
+/* clc_inv_action op codes (docs/items-inventory-spec.md, sec 3.5) */
+#define	INVA_MOVE		0
+#define	INVA_SWAP		1
+#define	INVA_SPLIT		2
+#define	INVA_EQUIP		3
+#define	INVA_UNEQUIP	4
+#define	INVA_USE		5
+#define	INVA_DROP		6
+#define	INVA_SOCKET		7
+#define	INVA_UNSOCKET	8
+#define	INVA_CLOSE		9
 
 //==============================================
 
