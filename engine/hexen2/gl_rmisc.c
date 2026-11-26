@@ -533,6 +533,53 @@ void R_TranslatePlayerSkin (int playernum)
 	R_TexSetFilter(GL_TEXTURE_2D, playertextures[playernum], GL_LINEAR, GL_LINEAR);
 }
 
+/* Worldspawn _farclip (or farclip) raises both the CPU BSP cull distance and
+ * the projection far plane for generated outdoor zones.  It never writes the
+ * archived gl_farclip, so the next ordinary map keeps the player's setting. */
+static void R_ParseFarclip (void)
+{
+	char key[128], value[4096];
+	const char *data;
+	float v;
+
+	gl_map_zfar = 0;
+
+	data = COM_Parse (cl.worldmodel->entities);
+	if (!data || com_token[0] != '{')
+		return;
+
+	while (1)
+	{
+		data = COM_Parse (data);
+		if (!data || com_token[0] == '}')
+			return;
+		if (com_token[0] == '_')
+			q_strlcpy (key, com_token + 1, sizeof(key));
+		else
+			q_strlcpy (key, com_token, sizeof(key));
+		while (key[0] && key[strlen(key) - 1] == ' ')
+			key[strlen(key) - 1] = 0;
+
+		data = COM_Parse (data);
+		if (!data)
+			return;
+		q_strlcpy (value, com_token, sizeof(value));
+
+		if (!strcmp ("farclip", key))
+		{
+			v = atof (value);
+			if (v > 0)
+			{
+				if (v < 4096.0f) v = 4096.0f;
+				else if (v > 65536.0f) v = 65536.0f;
+				gl_map_zfar = v;
+				Cvar_SetValue ("r_farclip", v);
+				Con_DPrintf ("farclip: worldspawn %g\n", v);
+			}
+		}
+	}
+}
+
 /*
 ===============
 R_NewMap
@@ -576,6 +623,7 @@ void R_NewMap (void)
 		else
 			Cvar_SetValue ("r_farclip", 8192);
 	}
+	R_ParseFarclip ();
 
 // clear out efrags in case the level hasn't been reloaded
 // FIXME: is this one short?

@@ -349,13 +349,12 @@ void R_LightCluster_Update (void)
 	}
 
 	/* Slice 0 lands on the near plane and slice LIGHT_TILES_Z on the far one.
-	 * NEARCLIP is 4 in gl_rmain.c; the far plane follows gl_farclip, clamped
-	 * there the same way.  Reversed-Z does not enter into it: only rows 0, 1
-	 * and 3 of the projection are read, and the depth row is row 2. */
+	 * NEARCLIP is 4 in gl_rmain.c; the far plane follows GL_ProjectionZFar,
+	 * the same clamp the projection uses.  Reversed-Z does not enter into it:
+	 * only rows 0, 1 and 3 of the projection are read, and the depth row is
+	 * row 2. */
 	znear = 4.0f;
-	zfar = gl_farclip.value;
-	if (zfar < 4096.0f) zfar = 4096.0f;
-	else if (zfar > 262144.0f) zfar = 262144.0f;
+	zfar = (float) GL_ProjectionZFar ();
 
 	lc_zlogscale = (float)LIGHT_TILES_Z / (log2f(zfar) - log2f(znear));
 	lc_zlogbias = -lc_zlogscale * log2f(znear);

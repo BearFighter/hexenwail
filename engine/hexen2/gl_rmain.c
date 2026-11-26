@@ -6462,16 +6462,12 @@ static void R_SetupGL (void)
 	{
 		GLdouble xmax = NEARCLIP * tan(r_refdef.fov_x * M_PI / 360.0);
 		GLdouble ymax = NEARCLIP * tan(r_refdef.fov_y * M_PI / 360.0);
-		/* Far plane from gl_farclip rather than the 16384 that used to be
-		 * written here, which left the cvar of that name -- Ironwail's and
-		 * QuakeSpasm's name for exactly this -- accepting values and doing
-		 * nothing.  Clamped rather than trusted: the low bound keeps a stray
-		 * small value from clipping the view into uselessness with no
-		 * obvious way back, and the high bound is well inside what
-		 * reversed-Z handles without precision loss.  uhexen2-li13. */
-		GLdouble zfar = gl_farclip.value;
-		if (zfar < 4096.0) zfar = 4096.0;
-		else if (zfar > 262144.0) zfar = 262144.0;
+		/* Far plane from GL_ProjectionZFar: the player's gl_farclip, or a
+		 * larger worldspawn _farclip for generated outdoor zones.  The
+		 * clamp keeps a stray small value from clipping the view into
+		 * uselessness, and the high bound stays inside what reversed-Z
+		 * handles without precision loss.  uhexen2-li13. */
+		GLdouble zfar = GL_ProjectionZFar ();
 		GL_MatrixMode(GL_MAT_PROJECTION);
 		GL_LoadIdentity();
 		GL_Frustum(-xmax, xmax, -ymax, ymax, NEARCLIP, zfar);

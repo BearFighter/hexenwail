@@ -31,6 +31,8 @@ extern float sky_box_rot;	/* r_skybox_speed as a yaw angle for the cubemap (uhex
 extern cvar_t gl_farclip;	/* projection far plane; defined here because the
 				 * ported sky code needed the name.  Read by
 				 * R_SetupGL (uhexen2-li13). */
+extern float gl_map_zfar;	/* per-map minimum far plane, from worldspawn _farclip */
+double GL_ProjectionZFar (void);	/* clamped max(gl_farclip, gl_map_zfar) */
 
 void Sky_Init (void);
 void Sky_NewMap (void);

@@ -102,6 +102,20 @@ gltexture_t	*solidskytexture, *alphaskytexture;
  * distance and is overwritten per level by protocol (gl_rmisc.c).  This one is
  * the frustum.  uhexen2-li13. */
 cvar_t gl_farclip = {"gl_farclip", "16384", CVAR_ARCHIVE};
+float gl_map_zfar = 0;	/* 0 = no worldspawn _farclip; set by R_NewMap */
+
+/* One source of truth for the projection far plane.  The map key raises the
+ * CPU-side cull distance (r_farclip) and the frustum together, but never writes
+ * the archived gl_farclip, so a dungeon loaded afterwards keeps the player's
+ * own setting. */
+double GL_ProjectionZFar (void)
+{
+	double zfar = (gl_farclip.value > gl_map_zfar) ? gl_farclip.value : gl_map_zfar;
+	if (zfar < 4096.0) zfar = 4096.0;
+	else if (zfar > 262144.0) zfar = 262144.0;
+	return zfar;
+}
+
 cvar_t r_fastsky = {"r_fastsky", "0", CVAR_ARCHIVE};	/* archived, as in Ironwail */
 cvar_t r_sky_quality = {"r_sky_quality", "12", CVAR_NONE};
 cvar_t r_skyfog = {"r_skyfog", "0.5", CVAR_NONE};
