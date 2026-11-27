@@ -6,9 +6,10 @@
  *
  * Layout (CANVAS_MENU units, 320x200):
  *   - title strip at the top,
- *   - page-0 equipment slots 0-12 across one row (10-12 are rune sockets),
+ *   - page-0 equipment slots 0-12 arranged as a Diablo-style paper doll on the
+ *     left; the two weapon slots are full-height, not row-of-boxes icons,
  *   - backpack grid of the 60 cells (page 0 slots 16-31, pages 1-2 slots
- *     0-31), ten columns wide and six rows tall.
+ *     0-31), ten columns wide and six rows tall, on the right.
  */
 
 #include "quakedef.h"
@@ -24,17 +25,17 @@
 #define	INV_TITLE_X		240
 #define	INV_TITLE_Y		4
 #define	INV_TIP_X		8
-#define	INV_TIP_Y		42
-#define	INV_EQUIP_X		4
-#define	INV_EQUIP_Y		20
-#define	INV_EQUIP_PITCH	24
-#define	INV_EQUIP_ICON	20
-#define	INV_GRID_X		40
-#define	INV_GRID_Y		56
-#define	INV_GRID_PITCH	24
+#define	INV_TIP_Y		34
+#define	INV_DOLL_X		0
+#define	INV_DOLL_Y		44
+#define	INV_DOLL_W		98
+#define	INV_DOLL_H		150
+#define	INV_GRID_X		100
+#define	INV_GRID_Y		58
+#define	INV_GRID_PITCH	21
 #define	INV_GRID_COLS	10
 #define	INV_GRID_ROWS	6
-#define	INV_CELL_ICON	20
+#define	INV_CELL_ICON	18
 #define	INV_BACKPACK_CELLS	(INV_GRID_COLS * INV_GRID_ROWS)
 #define	INV_OCCUPIED_ID		255	/* covered cell of a multi-cell item */
 
@@ -387,14 +388,31 @@ static void Inv_ItemNameForScreen (const inv_screen_t *s,
 	(void)h;
 }
 
+/* Page-0 equipment layout.  Slots 4 and 5 are the main-hand/off-hand
+ * paper-doll sockets: full-height fields, not another row of tiny boxes.
+ * The rest cluster around a simple body silhouette. */
+static const inv_rect_t inv_equip_rects[INV_SCREEN_EQUIP_SLOTS] =
+{
+	/* 0 helmet      */	{ 32,  46, 20, 16 },
+	/* 1 breastplate */	{ 28,  78, 26, 28 },
+	/* 2 bracers     */	{  4, 112, 20, 16 },
+	/* 3 amulet      */	{ 36,  64, 12, 12 },
+	/* 4 main hand   */	{ 56,  66, 40, 62 },
+	/* 5 off hand    */	{  2,  66, 26, 44 },
+	/* 6 ring 1      */	{  6, 136, 12, 12 },
+	/* 7 ring 2      */	{ 80, 136, 12, 12 },
+	/* 8 boots       */	{ 32, 152, 20, 16 },
+	/* 9 belt        */	{ 28, 108, 26, 10 },
+	/* 10 rune 1     */	{  6, 154, 12, 12 },
+	/* 11 rune 2     */	{ 20, 154, 12, 12 },
+	/* 12 rune 3     */	{ 80, 154, 12, 12 },
+};
+
 static inv_rect_t Inv_EquipmentRect (int slot)
 {
-	inv_rect_t r;
-	r.x = INV_EQUIP_X + slot * INV_EQUIP_PITCH;
-	r.y = INV_EQUIP_Y;
-	r.w = INV_EQUIP_ICON;
-	r.h = INV_EQUIP_ICON;
-	return r;
+	if (slot < 0 || slot >= INV_SCREEN_EQUIP_SLOTS)
+		slot = 0;
+	return inv_equip_rects[slot];
 }
 
 static inv_rect_t Inv_BackpackRect (int li)
@@ -491,7 +509,7 @@ static void Inv_DrawItemSpan (const inv_screen_t *s, inv_rect_t r,
 
 	if (li < 0)
 	{
-		/* Equipment row: one full icon, no footprint. */
+		/* Paper-doll socket: one full icon scaled to the whole field. */
 		Inv_DrawItemArt (s->client, r, id, count);
 		return;
 	}
@@ -520,6 +538,33 @@ static void Inv_DrawItemSpan (const inv_screen_t *s, inv_rect_t r,
 	Inv_DrawItemArt (s->client, r, aid, acount);
 }
 
+/* A minimal body silhouette behind the sockets.  It is plain geometry so it
+ * works identically on GL, GLES and the software renderer. */
+static void Inv_DrawPaperDoll (void)
+{
+	Inv_FillRect (INV_DOLL_X, INV_DOLL_Y, INV_DOLL_W, INV_DOLL_H,
+		      0.035f, 0.04f, 0.035f, 0.70f);
+	Inv_FillRect (INV_DOLL_X + 2, INV_DOLL_Y + 2, INV_DOLL_W - 4, 1,
+		      0.22f, 0.18f, 0.08f, 0.90f);
+
+	/* head, neck and torso */
+	Inv_FillRect (36, 48, 16, 14, 0.13f, 0.14f, 0.13f, 0.85f);
+	Inv_FillRect (41, 62, 6, 6, 0.13f, 0.14f, 0.13f, 0.85f);
+	Inv_FillRect (28, 68, 26, 42, 0.13f, 0.14f, 0.13f, 0.85f);
+
+	/* arms and hands */
+	Inv_FillRect (16, 72, 12, 34, 0.11f, 0.12f, 0.11f, 0.85f);
+	Inv_FillRect (54, 72, 12, 34, 0.11f, 0.12f, 0.11f, 0.85f);
+	Inv_FillRect (16, 104, 10, 10, 0.13f, 0.14f, 0.13f, 0.85f);
+	Inv_FillRect (56, 104, 10, 10, 0.13f, 0.14f, 0.13f, 0.85f);
+
+	/* legs and feet */
+	Inv_FillRect (32, 112, 9, 42, 0.11f, 0.12f, 0.11f, 0.85f);
+	Inv_FillRect (45, 112, 9, 42, 0.11f, 0.12f, 0.11f, 0.85f);
+	Inv_FillRect (30, 150, 12, 8, 0.13f, 0.14f, 0.13f, 0.85f);
+	Inv_FillRect (45, 150, 12, 8, 0.13f, 0.14f, 0.13f, 0.85f);
+}
+
 void INV_ScreenDraw (const inv_screen_t *s)
 {
 	int slot, li;
@@ -533,6 +578,8 @@ void INV_ScreenDraw (const inv_screen_t *s)
 	M_Print (INV_TITLE_X, INV_TITLE_Y, "Inventory");
 	M_Print (INV_TIP_X, INV_TIP_Y,
 		 "LMB sel RMB use E equip D drop TAB exit");
+
+	Inv_DrawPaperDoll ();
 
 	/* Pass 1: the grid, so every row stays visible under large items. */
 	for (slot = 0; slot < INV_SCREEN_EQUIP_SLOTS; slot++)
@@ -567,17 +614,25 @@ void INV_ScreenDraw (const inv_screen_t *s)
 	}
 }
 
-/* Hit-test both the equipment row and the backpack grid, including empty
+/* Hit-test both the paper doll and the backpack grid, including empty
  * cells so clicking a cell always moves the selection. */
 static int Inv_CellAt (const inv_screen_t *s, int vx, int vy,
 		       int *page, int *slot)
 {
-	if (vy >= INV_EQUIP_Y && vy < INV_EQUIP_Y + INV_EQUIP_PITCH &&
-	    vx >= INV_EQUIP_X && vx < INV_EQUIP_X + INV_SCREEN_EQUIP_SLOTS * INV_EQUIP_PITCH)
 	{
-		*page = 0;
-		*slot = (vx - INV_EQUIP_X) / INV_EQUIP_PITCH;
-		return 1;
+		int equip_slot;
+		for (equip_slot = 0; equip_slot < INV_SCREEN_EQUIP_SLOTS;
+		     equip_slot++)
+		{
+			inv_rect_t r = Inv_EquipmentRect (equip_slot);
+			if (vx >= r.x - 2 && vx < r.x + r.w + 2 &&
+			    vy >= r.y - 2 && vy < r.y + r.h + 2)
+			{
+				*page = 0;
+				*slot = equip_slot;
+				return 1;
+			}
+		}
 	}
 
 	if (vx >= INV_GRID_X && vy >= INV_GRID_Y)
