@@ -35,6 +35,7 @@
 #define	INV_GRID_ROWS	6
 #define	INV_CELL_ICON	20
 #define	INV_BACKPACK_CELLS	(INV_GRID_COLS * INV_GRID_ROWS)
+#define	INV_OCCUPIED_ID		255	/* covered cell of a multi-cell item */
 
 typedef struct inv_rect_t
 {
@@ -171,6 +172,86 @@ static void Inv_CellForLocal (int li, int *page, int *slot)
 	}
 }
 
+/* Inverse map, used to resolve a covered cell back to its item anchor. */
+static int Inv_LocalForCell (int page, int slot)
+{
+	if (page == 0 && slot >= 16 && slot < 32)
+		return slot - 16;
+	if (page == 1 && slot >= 0 && slot < 32)
+		return slot;
+	if (page == 2 && slot >= 0 && slot < 32)
+		return slot + 16;
+	return -1;
+}
+
+/* Derive the visual footprint from the occupied-marker cells.  The anchor is
+ * always drawn first, so the client does not need a second size registry. */
+static void Inv_SpanForAnchor (client_state_t *client, int anchor,
+			       int *w, int *h)
+{
+	int i, arow, acol, minrow, maxrow, mincol, maxcol;
+
+	*w = 1;
+	*h = 1;
+	if (anchor < 0 || anchor >= INV_BACKPACK_CELLS)
+		return;
+
+	arow = anchor / INV_GRID_COLS;
+	acol = anchor % INV_GRID_COLS;
+	minrow = maxrow = arow;
+	mincol = maxcol = acol;
+
+	for (i = 0; i < INV_BACKPACK_CELLS; i++)
+	{
+		int page, slot, row, col;
+		float count;
+		Inv_CellForLocal (i, &page, &slot);
+		if ((int)Inv_Find (client, page, slot, &count) != INV_OCCUPIED_ID ||
+		    (int)count != anchor)
+			continue;
+		row = i / INV_GRID_COLS;
+		col = i % INV_GRID_COLS;
+		if (row < minrow) minrow = row;
+		if (row > maxrow) maxrow = row;
+		if (col < mincol) mincol = col;
+		if (col > maxcol) maxcol = col;
+	}
+
+	*w = maxcol - mincol + 1;
+	*h = maxrow - minrow + 1;
+}
+
+/* True when the selected or hovered cell sits inside this item's footprint. */
+static int Inv_SelectionInSpan (const inv_screen_t *s, int anchor, int w, int h)
+{
+	int li, arow, acol, row, col;
+
+	li = Inv_LocalForCell (s->page, s->slot);
+	if (li < 0 || anchor < 0 || anchor >= INV_BACKPACK_CELLS)
+		return 0;
+	arow = anchor / INV_GRID_COLS;
+	acol = anchor % INV_GRID_COLS;
+	row = li / INV_GRID_COLS;
+	col = li % INV_GRID_COLS;
+	return row >= arow && row < arow + h && col >= acol && col < acol + w;
+}
+
+static int Inv_HoverInSpan (const inv_screen_t *s, int anchor, int w, int h)
+{
+	int li, arow, acol, row, col;
+
+	if (!s->hover_valid)
+		return 0;
+	li = Inv_LocalForCell (s->hover_page, s->hover_slot);
+	if (li < 0 || anchor < 0 || anchor >= INV_BACKPACK_CELLS)
+		return 0;
+	arow = anchor / INV_GRID_COLS;
+	acol = anchor % INV_GRID_COLS;
+	row = li / INV_GRID_COLS;
+	col = li % INV_GRID_COLS;
+	return row >= arow && row < arow + h && col >= acol && col < acol + w;
+}
+
 static inv_rect_t Inv_EquipmentRect (int slot)
 {
 	inv_rect_t r;
@@ -228,11 +309,23 @@ static void Inv_DrawCell (const inv_screen_t *s, inv_rect_t r,
 {
 	float count = 0;
 	float id = Inv_Find (s->client, page, slot, &count);
-	int selected = (s->page == page && s->slot == slot);
-	int hovered = (s->hover_valid && s->hover_page == page &&
-		       s->hover_slot == slot);
+	int li = Inv_LocalForCell (page, slot);
+	int w, h;
 
-	Inv_DrawCellFrame (r, selected, hovered);
+	/* Covered cells are drawn as part of their anchor's rectangle. */
+	if ((int)id == INV_OCCUPIED_ID)
+		return;
+
+	Inv_SpanForAnchor (s->client, li, &w, &h);
+	r.w = INV_CELL_ICON + (w - 1) * INV_GRID_PITCH;
+	r.h = INV_CELL_ICON + (h - 1) * INV_GRID_PITCH;
+
+	Inv_DrawCellFrame (r,
+			   li >= 0 ? Inv_SelectionInSpan (s, li, w, h) :
+				     (s->page == page && s->slot == slot),
+			   li >= 0 ? Inv_HoverInSpan (s, li, w, h) :
+				     (s->hover_valid && s->hover_page == page &&
+				      s->hover_slot == slot));
 	if (id > 0)
 		Inv_DrawItem (s->client, r, id, count);
 }
