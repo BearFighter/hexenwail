@@ -453,6 +453,15 @@ typedef struct
 	int	movechain;
 	func_t	chainmoved;
 	float	string_index;
+
+	/* crawler-fork: fields appended at the end of the game's entity list
+	 * (zone exit_id/fog_on_approach + inventory weapon_item/weapon_behavior).
+	 * ED_Alloc clears progs->entityfields*4 bytes from &v, so the engine's
+	 * mirrored struct must cover all of them. */
+	float	exit_id;
+	float	fog_on_approach;
+	float	weapon_item;
+	float	weapon_behavior;
 } entvars_t;
 
 /* crc for Hexen II v1.03 progs.dat headers	*/
