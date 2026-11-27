@@ -10138,8 +10138,30 @@ static void M_HWConnect_Key (int key)
 
 static inv_screen_t inv_screen;
 
+/* The inventory is a real-time overlay.  It still takes key_menu so gameplay
+ * input is swallowed, but the single-player server must keep ticking.  The
+ * host/sv_user pause checks ask this instead of assuming every menu pauses. */
+qboolean M_RealtimeMenuActive (void)
+{
+	return m_state == m_inventory && (Key_GetDest() & key_menu) != 0;
+}
+
+static void M_Inventory_Close (void)
+{
+	if (m_state != m_inventory)
+		return;
+	INV_ScreenShutdown (&inv_screen);
+	m_state = m_none;
+	Key_SetDest (key_game);
+}
+
 void M_Menu_Inventory_f (void)
 {
+	if (m_state == m_inventory)
+	{
+		M_Inventory_Close ();
+		return;
+	}
 	Key_SetDest (key_menu);
 	m_state = m_inventory;
 	m_entersound = true;
@@ -10151,16 +10173,20 @@ static void M_Inventory_Key (int k)
 	switch (k)
 	{
 	case K_ESCAPE:
+	case K_TAB:
 		/* Close back to gameplay; the inventory never nests menus. */
-		Key_SetDest (key_game);
-		m_state = m_none;
+		M_Inventory_Close ();
+		break;
+
+	case K_MOUSE2:
+		/* Right click uses the selected cell, matching the tip line. */
+		CL_SendInventoryAction (INVA_USE, inv_screen.page, inv_screen.slot, 0);
 		break;
 
 	case K_UPARROW:
 	case K_DOWNARROW:
-		INV_ScreenKey (&inv_screen, k);
-		break;
-
+	case K_LEFTARROW:
+	case K_RIGHTARROW:
 	case K_ENTER:
 		INV_ScreenKey (&inv_screen, k);
 		break;
@@ -10190,6 +10216,10 @@ static void M_Inventory_Key (int k)
 
 static void M_Inventory_Draw (void)
 {
+	/* Hover is a draw-time event: the pointer layer reports motion once per
+	 * frame and M_Draw has already switched to CANVAS_MENU here. */
+	if (menu_mouse_moved)
+		INV_ScreenHover (&inv_screen, M_PointerCanvasX (), M_PointerCanvasY ());
 	INV_ScreenDraw (&inv_screen);
 }
 
@@ -10269,7 +10299,9 @@ void M_Draw (void)
 			 * (no version watermark, full opacity, full screen). */
 			Draw_MenuBackdrop ();
 		}
-		else if (scr_menubgstyle.integer >= 1)
+		/* The inventory draws its own translucent panel over the live view;
+		 * the amber modal fade would hide the world it is meant to sit on. */
+		else if (scr_menubgstyle.integer >= 1 && m_state != m_inventory)
 		{
 			/* Demo/game world is behind — dim it with the amber fade.
 			 *
@@ -10786,6 +10818,13 @@ void M_Keydown (int key, qboolean repeat)
 		 * menu saved over a slot. */
 		if (pointer && realtime < m_click_lockout)
 			return;
+		/* Inventory cells are hit-tested directly instead of becoming Enter:
+		 * a click selects the cell under the pointer, occupied or not. */
+		if (pointer && m_state == m_inventory)
+		{
+			INV_ScreenClick (&inv_screen, M_PointerCanvasX (), M_PointerCanvasY ());
+			return;
+		}
 		if (!repeat && pointer && M_MousePress ())
 			return;
 		if (m_state == m_confirm || m_state == m_quit)

@@ -1,14 +1,14 @@
-/* inv_ui.c -- Diablo-style inventory screen (docs/items-inventory-spec.md).
+/* inv_ui.c -- Diablo-style inventory overlay (docs/items-inventory-spec.md).
  *
- * Phase 1 of the inventory slice: the read-only screen over the protocol-21
- * extended inventory.  The engine menu state (m_inventory) owns the state
- * machine; this file owns the layout, hit-testing and drawing behind it.
+ * Real-time overlay: the menu layer keeps key_dest == key_menu so gameplay
+ * input is swallowed, but the server is deliberately not paused.  This file
+ * owns the layout, hit-testing and drawing behind m_inventory.
  *
  * Layout (CANVAS_MENU units, 320x200):
- *   - title bar at the top,
- *   - paper doll (page 0 equipment slots, ascending) down the left,
+ *   - title strip at the top,
+ *   - page-0 equipment slots 0-12 across one row (10-12 are rune sockets),
  *   - backpack grid of the 60 cells (page 0 slots 16-31, pages 1-2 slots
- *     0-31) below it, ten columns wide and six rows tall.
+ *     0-31), ten columns wide and six rows tall.
  */
 
 #include "quakedef.h"
@@ -18,51 +18,69 @@
 #include "client.h"
 
 /* Screen geometry in CANVAS_MENU units (320x200). */
-#define	INV_TITLE_X		120
-#define	INV_TITLE_Y		8
-#define	INV_DOLL_X		16
-#define	INV_DOLL_Y		24
-#define	INV_DOLL_PITCH	32
-#define	INV_DOLL_ICON	28
-#define	INV_GRID_X		16
+#define	INV_CANVAS_W		320
+#define	INV_CANVAS_H		200
+#define	INV_TITLE_X		132
+#define	INV_TITLE_Y		4
+#define	INV_TIP_X		8
+#define	INV_TIP_Y		42
+#define	INV_EQUIP_X		4
+#define	INV_EQUIP_Y		20
+#define	INV_EQUIP_PITCH	24
+#define	INV_EQUIP_ICON	20
+#define	INV_GRID_X		40
 #define	INV_GRID_Y		56
 #define	INV_GRID_PITCH	24
 #define	INV_GRID_COLS	10
 #define	INV_GRID_ROWS	6
-#define	INV_BACKPACK_CELLS	60
-#define	INV_SCREEN_MAX_Y	200
+#define	INV_CELL_ICON	20
+#define	INV_BACKPACK_CELLS	(INV_GRID_COLS * INV_GRID_ROWS)
+
+typedef struct inv_rect_t
+{
+	int		x, y, w, h;
+} inv_rect_t;
 
 void INV_ScreenInit (inv_screen_t *s, client_state_t *client)
 {
 	s->client = client;
 	s->page = 0;
 	s->slot = 16;
+	s->hover_page = -1;
+	s->hover_slot = -1;
+	s->hover_valid = 0;
 }
 
 void INV_ScreenShutdown (inv_screen_t *s)
 {
 	s->client = 0;
+	s->hover_valid = 0;
 }
 
-/* Read an item out of the client's extended-inventory chain: page, slot ->
- * item id + count.  Returns the item id; 0 means empty.  Same walk the inv_*
- * slot builtins use, so the screen, the action queue and the storage cannot
- * disagree about what an item is. */
+/* Fill helper that works on all three renderer paths.  The GL/WebGL builds get
+ * an alpha-blended panel; the 8-bit software build falls back to palette 0. */
+static void Inv_FillRect (int x, int y, int w, int h,
+			  float r, float g, float b, float a)
+{
+#if defined(GLQUAKE) || defined(WEBQUAKE)
+	Draw_FillAlpha (x, y, w, h, r, g, b, a);
+#else
+	Draw_Fill (x, y, w, h, 0);
+#endif
+}
+
+/* Read an item out of the client's extended-inventory pages: page, slot ->
+ * item id + count.  Returns the item id; 0 means empty. */
 static float Inv_Find (client_state_t *client, int page, int slot, float *count)
 {
 	ex_inventory_page_t *p;
-	if (page < 0 || page >= MAX_INVENTORY_EX_PAGES)
+	if (!client || page < 0 || page >= MAX_INVENTORY_EX_PAGES)
 	{
 		*count = 0;
 		return 0;
 	}
 	p = &client->ex_inventory[page];
-	if (slot < 0 || slot >= INV_SCREEN_SLOTS)
-	{
-		*count = 0;
-		return 0;
-	}
-	if (p->item_id[slot] == 0)
+	if (slot < 0 || slot >= INV_SCREEN_SLOTS || !p->item_id[slot])
 	{
 		*count = 0;
 		return 0;
@@ -76,6 +94,8 @@ static void Inv_ItemIcon (client_state_t *client, float item_id, char *path, int
 {
 	int i;
 	path[0] = 0;
+	if (!client)
+		return;
 	for (i = 0; i < client->num_ex_items; i++)
 	{
 		if (client->ex_items[i].id == (int)item_id)
@@ -93,28 +113,35 @@ static void Inv_ItemIcon (client_state_t *client, float item_id, char *path, int
 	}
 }
 
-static void Inv_DrawItem (client_state_t *client, int x, int y, float item_id, float count)
+static void Inv_DrawItem (client_state_t *client, inv_rect_t r,
+			  float item_id, float count)
 {
-	char path[MAX_QPATH];
-	qpic_t *pic;
+	char	path[MAX_QPATH];
+	qpic_t	*pic;
+	int	iw, ih;
+
 	path[0] = 0;
 	if (item_id > 0)
-		Inv_ItemIcon (client, item_id, path, MAX_QPATH);
-	if (path[0] == 0)
+		Inv_ItemIcon (client, item_id, path, sizeof(path));
+	if (!path[0])
 		return;
 	pic = Draw_CachePic (path);
-	if (!pic)
+	if (!pic || pic->width <= 0 || pic->height <= 0)
 		return;
-	Draw_Pic (x, y, pic);
+
+	iw = pic->width < r.w ? pic->width : r.w;
+	ih = pic->height < r.h ? pic->height : r.h;
+	Draw_SubPic (r.x + (r.w - iw) / 2, r.y + (r.h - ih) / 2,
+		     pic, 0, 0, iw, ih);
+
 	if (count > 1)
 	{
 		char buf[16];
-		int v = (int)count;
+		int val = (int)count;
 		int len = 0;
 		char tmp[16];
-		int val = v;
 		int i;
-		if (val == 0)
+		if (val <= 0)
 			tmp[len++] = '0';
 		while (val > 0)
 		{
@@ -124,7 +151,7 @@ static void Inv_DrawItem (client_state_t *client, int x, int y, float item_id, f
 		for (i = 0; i < len; i++)
 			buf[i] = tmp[len - 1 - i];
 		buf[len] = 0;
-		M_Print (x, y + INV_GRID_PITCH, buf);
+		M_Print (r.x + r.w - 8, r.y + r.h - 8, buf);
 	}
 }
 
@@ -144,6 +171,26 @@ static void Inv_CellForLocal (int li, int *page, int *slot)
 	}
 }
 
+static inv_rect_t Inv_EquipmentRect (int slot)
+{
+	inv_rect_t r;
+	r.x = INV_EQUIP_X + slot * INV_EQUIP_PITCH;
+	r.y = INV_EQUIP_Y;
+	r.w = INV_EQUIP_ICON;
+	r.h = INV_EQUIP_ICON;
+	return r;
+}
+
+static inv_rect_t Inv_BackpackRect (int li)
+{
+	inv_rect_t r;
+	r.x = INV_GRID_X + (li % INV_GRID_COLS) * INV_GRID_PITCH;
+	r.y = INV_GRID_Y + (li / INV_GRID_COLS) * INV_GRID_PITCH;
+	r.w = INV_CELL_ICON;
+	r.h = INV_CELL_ICON;
+	return r;
+}
+
 static int Inv_ScreenIndexFor (const inv_screen_t *s)
 {
 	int li;
@@ -157,126 +204,153 @@ static int Inv_ScreenIndexFor (const inv_screen_t *s)
 	return 0;
 }
 
-void INV_ScreenDraw (const inv_screen_t *s)
+static void Inv_DrawCellFrame (inv_rect_t r, int selected, int hovered)
 {
-	client_state_t *client = s->client;
-	int li;
+	/* Cell body. */
+	Inv_FillRect (r.x - 2, r.y - 2, r.w + 4, r.h + 4,
+		      0.03f, 0.04f, 0.03f, 0.74f);
 
-	M_Print (INV_TITLE_X, INV_TITLE_Y, "Inventory");
-
-	/* Paper doll: equipped slots (page 0, slots 0-12), ascending. */
+	/* Hairline border; hover brightens, selection turns blue. */
 	{
-		int y = INV_DOLL_Y;
-		int slot;
-		for (slot = 0; slot < INV_SCREEN_EQUIP_SLOTS; slot++)
-		{
-			float count = 0;
-			float id = Inv_Find (client, 0, slot, &count);
-			if (id <= 0)
-				continue;
-			Inv_DrawItem (client, INV_DOLL_X, y, id, count);
-			y += INV_DOLL_PITCH;
-			if (y + INV_DOLL_ICON > INV_SCREEN_MAX_Y)
-				break;
-		}
-	}
-
-	/* Backpack grid: the 60 cells. */
-	for (li = 0; li < INV_BACKPACK_CELLS; li++)
-	{
-		int page, slot;
-		float count = 0;
-		float id;
-		int col = li % INV_GRID_COLS;
-		int row = li / INV_GRID_COLS;
-		int x = INV_GRID_X + col * INV_GRID_PITCH;
-		int y = INV_GRID_Y + row * INV_GRID_PITCH;
-		Inv_CellForLocal (li, &page, &slot);
-		id = Inv_Find (client, page, slot, &count);
-		if (id <= 0)
-			continue;
-		Inv_DrawItem (client, x, y, id, count);
+		float cr = hovered ? 0.95f : (selected ? 0.35f : 0.55f);
+		float cg = hovered ? 0.85f : (selected ? 0.70f : 0.45f);
+		float cb = hovered ? 0.35f : (selected ? 1.00f : 0.18f);
+		float ca = hovered || selected ? 1.0f : 0.80f;
+		Inv_FillRect (r.x - 2, r.y - 2, r.w + 4, 1, cr, cg, cb, ca);
+		Inv_FillRect (r.x - 2, r.y + r.h + 1, r.w + 4, 1, cr, cg, cb, ca);
+		Inv_FillRect (r.x - 2, r.y - 2, 1, r.h + 4, cr, cg, cb, ca);
+		Inv_FillRect (r.x + r.w + 1, r.y - 2, 1, r.h + 4, cr, cg, cb, ca);
 	}
 }
 
-int INV_ScreenClick (inv_screen_t *s, int vx, int vy)
+static void Inv_DrawCell (const inv_screen_t *s, inv_rect_t r,
+			  int page, int slot)
 {
-	client_state_t *client = s->client;
-	int slot;
+	float count = 0;
+	float id = Inv_Find (s->client, page, slot, &count);
+	int selected = (s->page == page && s->slot == slot);
+	int hovered = (s->hover_valid && s->hover_page == page &&
+		       s->hover_slot == slot);
 
+	Inv_DrawCellFrame (r, selected, hovered);
+	if (id > 0)
+		Inv_DrawItem (s->client, r, id, count);
+}
+
+void INV_ScreenDraw (const inv_screen_t *s)
+{
+	int slot, li;
+
+	/* Dark panel over the live world: readable, but the game stays visible. */
+	Inv_FillRect (0, 0, INV_CANVAS_W, INV_CANVAS_H,
+		      0.02f, 0.025f, 0.02f, 0.72f);
+	Inv_FillRect (0, 0, INV_CANVAS_W, 15,
+		      0.16f, 0.13f, 0.05f, 0.92f);
+
+	M_Print (INV_TITLE_X, INV_TITLE_Y, "Inventory");
+	M_Print (INV_TIP_X, INV_TIP_Y,
+		 "LMB sel RMB use E equip D drop TAB exit");
+
+	/* Equipment: page 0 slots 0-12, ascending. */
 	for (slot = 0; slot < INV_SCREEN_EQUIP_SLOTS; slot++)
+		Inv_DrawCell (s, Inv_EquipmentRect (slot), 0, slot);
+
+	/* Backpack: the 60 cells. */
+	for (li = 0; li < INV_BACKPACK_CELLS; li++)
 	{
-		float count = 0;
-		float id = Inv_Find (client, 0, slot, &count);
-		if (id <= 0)
-			continue;
-		if (vx >= INV_DOLL_X && vx < INV_DOLL_X + INV_DOLL_ICON &&
-			vy >= INV_DOLL_Y && vy < INV_DOLL_Y + INV_DOLL_ICON)
-		{
-			s->page = 0;
-			s->slot = slot;
-			return 1;
-		}
+		int page, slot2;
+		Inv_CellForLocal (li, &page, &slot2);
+		Inv_DrawCell (s, Inv_BackpackRect (li), page, slot2);
+	}
+}
+
+/* Hit-test both the equipment row and the backpack grid, including empty
+ * cells so clicking a cell always moves the selection. */
+static int Inv_CellAt (const inv_screen_t *s, int vx, int vy,
+		       int *page, int *slot)
+{
+	if (vy >= INV_EQUIP_Y && vy < INV_EQUIP_Y + INV_EQUIP_PITCH &&
+	    vx >= INV_EQUIP_X && vx < INV_EQUIP_X + INV_SCREEN_EQUIP_SLOTS * INV_EQUIP_PITCH)
+	{
+		*page = 0;
+		*slot = (vx - INV_EQUIP_X) / INV_EQUIP_PITCH;
+		return 1;
 	}
 
+	if (vx >= INV_GRID_X && vy >= INV_GRID_Y)
 	{
-		int li;
-		for (li = 0; li < INV_BACKPACK_CELLS; li++)
+		int col = (vx - INV_GRID_X) / INV_GRID_PITCH;
+		int row = (vy - INV_GRID_Y) / INV_GRID_PITCH;
+		if (col >= 0 && col < INV_GRID_COLS && row >= 0 && row < INV_GRID_ROWS)
 		{
-			int page, slot2;
-			float count = 0;
-			float id;
-			int col = li % INV_GRID_COLS;
-			int row = li / INV_GRID_COLS;
-			int x = INV_GRID_X + col * INV_GRID_PITCH;
-			int y = INV_GRID_Y + row * INV_GRID_PITCH;
-			Inv_CellForLocal (li, &page, &slot2);
-			id = Inv_Find (client, page, slot2, &count);
-			if (id <= 0)
-				continue;
-			if (vx >= x && vx < x + INV_GRID_PITCH &&
-				vy >= y && vy < y + INV_GRID_PITCH)
-			{
-				s->page = page;
-				s->slot = slot2;
-				return 1;
-			}
+			Inv_CellForLocal (row * INV_GRID_COLS + col, page, slot);
+			return 1;
 		}
 	}
 	return 0;
 }
 
+int INV_ScreenClick (inv_screen_t *s, int vx, int vy)
+{
+	int page, slot;
+	if (!Inv_CellAt (s, vx, vy, &page, &slot))
+		return 0;
+	s->page = page;
+	s->slot = slot;
+	s->hover_page = page;
+	s->hover_slot = slot;
+	s->hover_valid = 1;
+	return 1;
+}
+
 void INV_ScreenHover (inv_screen_t *s, int vx, int vy)
 {
-	/* Phase 1: hover moves the selection over an occupied cell. */
-	INV_ScreenClick (s, vx, vy);
+	int page, slot;
+	if (Inv_CellAt (s, vx, vy, &page, &slot))
+	{
+		s->hover_page = page;
+		s->hover_slot = slot;
+		s->hover_valid = 1;
+	}
+	else
+		s->hover_valid = 0;
 }
 
 int INV_ScreenKey (inv_screen_t *s, int key)
 {
-	/* Phase 1: keyboard navigation over the backpack grid; Enter commits
-	 * a USE action on the selected cell through the clc_inv_action queue. */
+	/* Arrow keys walk the backpack grid linearly.  Enter/right mouse use
+	 * the selected cell; menu.c owns the equip/drop/Tab keys. */
 	switch (key)
 	{
 	case K_UPARROW:
 	case K_DOWNARROW:
+	case K_LEFTARROW:
+	case K_RIGHTARROW:
 		{
 			int li = Inv_ScreenIndexFor (s);
 			int next = li;
 			if (key == K_DOWNARROW)
-				next = (li + 1 < INV_BACKPACK_CELLS) ? li + 1 : 0;
+				next = li + 1;
+			else if (key == K_UPARROW)
+				next = li - 1;
+			else if (key == K_RIGHTARROW)
+				next = li + INV_GRID_COLS;
 			else
-				next = (li > 0) ? li - 1 : (INV_BACKPACK_CELLS - 1);
+				next = li - INV_GRID_COLS;
+			if (next < 0)
+				next += INV_BACKPACK_CELLS;
+			else if (next >= INV_BACKPACK_CELLS)
+				next -= INV_BACKPACK_CELLS;
 			{
 				int page, slot;
 				Inv_CellForLocal (next, &page, &slot);
 				s->page = page;
 				s->slot = slot;
+				s->hover_valid = 0;
 			}
 			return 1;
 		}
 	case K_ENTER:
-		/* selected (page, slot) -> clc_inv_action. */
 		CL_SendInventoryAction (INVA_USE, s->page, s->slot, 0);
 		return 1;
 	default:

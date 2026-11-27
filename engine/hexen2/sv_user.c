@@ -21,6 +21,7 @@
  */
 
 #include "quakedef.h"
+#include "menu.h"
 
 edict_t	*sv_player = NULL;
 
@@ -852,7 +853,7 @@ void SV_RunClients (void)
 #if defined(SERVERONLY)
 		if (!sv.paused)
 #else
-		if (!sv.paused && (svs.maxclients > 1 || Key_GetDest() == key_game))
+		if (!sv.paused && (svs.maxclients > 1 || Key_GetDest() == key_game || M_RealtimeMenuActive()))
 #endif
 			SV_ClientThink ();
 	}

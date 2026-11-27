@@ -31,6 +31,7 @@
 extern int VID_MenuGetVSync (void);
 #include "cdaudio.h"
 #include "host_tick.h"
+#include "menu.h"
 #include <setjmp.h>
 
 /*
@@ -1117,7 +1118,7 @@ static void _Host_ServerFrame (void)
 
 // move things around and think
 // always pause in single player if in console or menus
-	if (!sv.paused && (svs.maxclients > 1 || Key_GetDest() == key_game))
+	if (!sv.paused && (svs.maxclients > 1 || Key_GetDest() == key_game || M_RealtimeMenuActive()))
 	{
 		SV_Physics ();
 	}
@@ -1173,7 +1174,7 @@ static void Host_ServerFrame (void)
 
 // move things around and think
 // always pause in single player if in console or menus
-	if (!sv.paused && (svs.maxclients > 1 || Key_GetDest() == key_game))
+	if (!sv.paused && (svs.maxclients > 1 || Key_GetDest() == key_game || M_RealtimeMenuActive()))
 		SV_Physics ();
 
 // send all messages to the clients

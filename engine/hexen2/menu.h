@@ -67,6 +67,7 @@ extern qboolean m_return_onerror;
 /* menus */
 void M_Init (void);
 void M_Keydown (int key, qboolean repeat);
+qboolean M_RealtimeMenuActive (void);
 void M_Keybind (int key);
 void M_ToggleMenu_f (void);
 

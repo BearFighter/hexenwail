@@ -1,14 +1,14 @@
 #ifndef __HX2_INV_UI_H
 #define __HX2_INV_UI_H
 
-/* Inventory screen behind the m_inventory menu state (docs/items-inventory-spec.md).
+/* Inventory screen overlay (docs/items-inventory-spec.md).
  *
- * Phase 1 of the inventory slice: the read-only screen over the protocol-21
- * extended inventory.  The engine menu state (m_inventory) owns the state
- * machine and calls into here for drawing, hit-testing and navigation; this
- * file owns the layout and the reads that go with it.
+ * The screen is a real-time HUD overlay, not a modal menu: the world keeps
+ * ticking while it is open.  menu.c owns the key_dest switch and calls into
+ * here for drawing, hit-testing and navigation; this file owns the layout and
+ * the reads that go with it.
  *
- * Reads go through the same extended-inventory walk the inv_* slot builtins
+ * Reads go through the same extended-inventory pages the inv_* slot builtins
  * (#205-214) use, so the screen, the action queue and the storage cannot
  * disagree about what an item is. */
 
@@ -19,12 +19,15 @@
 /* Equipment slots live on page 0; slots 10-12 are the equipped rune sockets. */
 #define	INV_SCREEN_EQUIP_SLOTS	13
 
-/* Screen state owned by the m_inventory menu state and passed in/out. */
+/* Screen state owned by the m_inventory overlay and passed in/out. */
 typedef struct inv_screen_t
 {
 	client_state_t	*client;	/* whose inventory is on screen */
-	int			page;		/* page being viewed / selection page */
-	int			slot;		/* selection slot on that page */
+	int			page;		/* selected page */
+	int			slot;		/* selected slot on that page */
+	int			hover_page;	/* pointer hover, if any */
+	int			hover_slot;
+	int			hover_valid;
 } inv_screen_t;
 
 void INV_ScreenInit (inv_screen_t *s, client_state_t *client);
