@@ -4547,7 +4547,7 @@ static void PF_update_ex_item(void)
 
 #define	INV_MAX_INVENTORY_PAGES		8
 #define	INV_MAX_INVENTORY_SLOTS		32
-#define	INV_MAX_EQUIP_SLOTS		13
+#define	INV_MAX_EQUIP_SLOTS		16
 #define	INV_MAX_ITEM_STACK		127
 #define	INV_RETURN(v)	do { G_FLOAT (OFS_RETURN) = (float)(v); return; } while (0)
 #define	INV_MARK(p,s)	do { (p)->changed_items |= (1 << (s)); (p)->new_items |= (1 << (s)); } while (0)

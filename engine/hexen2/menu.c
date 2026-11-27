@@ -486,6 +486,24 @@ static int M_PointerCanvasX (void)
 	return MenuPointer_CanvasX (&c, (float)menu_mouse_x);
 }
 
+/* The inventory gets its own larger, centred canvas (CANVAS_INVENTORY), so its
+ * hover/drag tests need that canvas' inverse rather than the menu inverse. */
+static int M_InventoryPointerCanvasY (int screen_y)
+{
+	menu_canvas_t	c;
+
+	M_MenuCanvas (&c);
+	return MenuPointer_InventoryCanvasY (&c, (float)screen_y);
+}
+
+static int M_InventoryPointerCanvasX (void)
+{
+	menu_canvas_t	c;
+
+	M_MenuCanvas (&c);
+	return MenuPointer_InventoryCanvasX (&c, (float)menu_mouse_x);
+}
+
 /*
 ================
 M_DrawCharacter
@@ -10217,9 +10235,10 @@ static void M_Inventory_Key (int k)
 static void M_Inventory_Draw (void)
 {
 	/* Hover is a draw-time event: the pointer layer reports motion once per
-	 * frame and M_Draw has already switched to CANVAS_MENU here. */
+	 * frame and M_Draw has already switched to CANVAS_INVENTORY here. */
 	if (menu_mouse_moved)
-		INV_ScreenHover (&inv_screen, M_PointerCanvasX (), M_PointerCanvasY ());
+		INV_ScreenHover (&inv_screen, M_InventoryPointerCanvasX (),
+				 M_InventoryPointerCanvasY (menu_mouse_y));
 	INV_ScreenDraw (&inv_screen);
 }
 
@@ -10348,6 +10367,11 @@ void M_Draw (void)
 	 * fill the whole screen. */
 	GL_SetCanvas (CANVAS_MENU);
 	m_canvas_active = true;
+
+	/* The inventory owns a larger centered canvas but keeps the same 320x200
+	 * drawing coordinates, so only the projection swaps here. */
+	if (m_state == m_inventory)
+		GL_SetCanvas (CANVAS_INVENTORY);
 
 	switch (m_state)
 	{
@@ -10704,6 +10728,15 @@ static qboolean M_MousePress (void)
  * pointer. */
 static void M_Pointer_Think (void)
 {
+	/* Inventory drags are polled here because key-up events do not reach
+	 * M_Keydown.  A release commits the move/equip action inside inv_ui.c. */
+	if (m_state == m_inventory)
+	{
+		INV_ScreenDragThink (&inv_screen, M_InventoryPointerCanvasX (),
+				     M_InventoryPointerCanvasY (menu_mouse_y),
+				     (menu_mouse_buttons & MENU_MOUSE_LEFT) != 0);
+		return;
+	}
 	if (m_grab == MGRAB_NONE)
 		return;
 	if (!(menu_mouse_buttons & MENU_MOUSE_LEFT) || m_grab_state != m_state)
@@ -10818,11 +10851,14 @@ void M_Keydown (int key, qboolean repeat)
 		 * menu saved over a slot. */
 		if (pointer && realtime < m_click_lockout)
 			return;
-		/* Inventory cells are hit-tested directly instead of becoming Enter:
-		 * a click selects the cell under the pointer, occupied or not. */
+		/* Inventory cells are hit-tested directly instead of becoming Enter.
+		 * A press on an occupied cell also arms a drag; the release is
+		 * detected by M_Pointer_Think, which ships the move/equip action. */
 		if (pointer && m_state == m_inventory)
 		{
-			INV_ScreenClick (&inv_screen, M_PointerCanvasX (), M_PointerCanvasY ());
+			INV_ScreenDragStart (&inv_screen,
+					     M_InventoryPointerCanvasX (),
+					     M_InventoryPointerCanvasY (menu_mouse_y));
 			return;
 		}
 		if (!repeat && pointer && M_MousePress ())

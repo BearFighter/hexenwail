@@ -120,6 +120,61 @@ static inline int MenuPointer_CanvasY (const menu_canvas_t *c, float fb_y)
 }
 
 /* ---------------------------------------------------------------------------
+ * CANVAS_INVENTORY is the same 320x200 logical space at twice the automatic
+ * scale, with a viewport centred on BOTH axes (gl_draw.c).  Hover and drag use
+ * these instead of the menu inverses or a click lands above the socket it is
+ * visibly over.  The software renderer reports scale 1 and simply centres the
+ * unscaled panel; these formulas collapse to that case too.
+ * ------------------------------------------------------------------------- */
+static inline void MenuPointer_InventoryFrame (const menu_canvas_t *c, float *s,
+						int *left, int *top, int *w, int *h)
+{
+	float	px, py;
+
+	*s = c->scale * 2.0f;
+	if (c->gw > 0 && *s > (float)c->gw / 320.0f)
+		*s = (float)c->gw / 320.0f;
+	if (c->gh > 0 && *s > (float)c->gh / 200.0f)
+		*s = (float)c->gh / 200.0f;
+	if (*s <= 0.0f)
+		*s = 1.0f;
+	px = c->gw > 0 ? (float)c->glwidth / (float)c->gw : 1.0f;
+	py = c->gh > 0 ? (float)c->glheight / (float)c->gh : 1.0f;
+	*w = (int)(320.0f * *s * px);
+	*h = (int)(200.0f * *s * py);
+	if (*w < 1)
+		*w = 1;
+	if (*h < 1)
+		*h = 1;
+	*left = (c->glwidth - *w) / 2;
+	*top = (c->glheight - *h) / 2;
+	if (*left < 0)
+		*left = 0;
+	if (*top < 0)
+		*top = 0;
+}
+
+static inline int MenuPointer_InventoryCanvasX (const menu_canvas_t *c,
+						float fb_x)
+{
+	float	s;
+	int	left, top, w, h;
+
+	MenuPointer_InventoryFrame (c, &s, &left, &top, &w, &h);
+	return MenuPointer_Floor ((fb_x - (float)left) * 320.0f / (float)w);
+}
+
+static inline int MenuPointer_InventoryCanvasY (const menu_canvas_t *c,
+						float fb_y)
+{
+	float	s;
+	int	left, top, w, h;
+
+	MenuPointer_InventoryFrame (c, &s, &left, &top, &w, &h);
+	return MenuPointer_Floor ((fb_y - (float)top) * 200.0f / (float)h);
+}
+
+/* ---------------------------------------------------------------------------
  * Sliders.  M_DrawSlider draws a left cap at x-8, MENU_SLIDER_CELLS bar cells
  * from x, a right cap after them, and the 8-wide thumb at
  * x + (MENU_SLIDER_CELLS-1)*8 * fraction.  The pointer maps to the fraction

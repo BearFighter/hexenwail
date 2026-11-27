@@ -2438,6 +2438,20 @@ void GL_SetCanvas (canvastype newcanvas)
 		R_SetViewport (glx + (glwidth - w) / 2, gly, w, h);
 		GL_Ortho (0, 320, (float)gh / s, 0, -99999, 99999);
 		break;
+	case CANVAS_INVENTORY:
+		/* The inventory is a self-contained 320x200 panel.  Double the menu
+		 * scale and centre the viewport on both axes so it reads as a large
+		 * centered window instead of a top-anchored strip.  Both clamps use
+		 * the GUI extent, so the panel still fits a short or narrow window. */
+		s = SCR_CalcUIScale (&scr_menuscale) * 2.0f;
+		s = q_min (s, (float)gw / 320.0f);
+		s = q_min (s, (float)gh / 200.0f);
+		w = (int)(320.0f * s * px);
+		h = (int)(200.0f * s * py);
+		R_SetViewport (glx + (glwidth - w) / 2,
+			       gly + (glheight - h) / 2, w, h);
+		GL_Ortho (0, 320, 200, 0, -99999, 99999);
+		break;
 	case CANVAS_INFO:
 		SCR_InfoCanvasSize (&w, &h);
 		R_SetViewport (glx, gly, glwidth, glheight);

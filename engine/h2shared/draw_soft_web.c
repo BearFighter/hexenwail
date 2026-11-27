@@ -96,6 +96,8 @@ The canvas rectangles are:
 
   CANVAS_SBAR : 320 x UI_SBAR_CANVAS_HEIGHT, bottom of screen, centred
   CANVAS_MENU : 320 wide, top of screen, centred
+  CANVAS_INVENTORY : 320 x 200, centred on both axes (this renderer cannot
+                  scale 2D, so the larger GL canvas degrades to center-only)
   everything else : the framebuffer itself
 
 sbar.c and menu.c draw in canvas coordinates, which is why a no-op here
@@ -116,6 +118,10 @@ void GL_SetCanvas (canvastype newcanvas)
 	case CANVAS_MENU:
 		draw_canvas_x = (vid.width - UI_CANVAS_WIDTH) / 2;
 		draw_canvas_y = 0;
+		break;
+	case CANVAS_INVENTORY:
+		draw_canvas_x = (vid.width - UI_CANVAS_WIDTH) / 2;
+		draw_canvas_y = (vid.height - 200) / 2;
 		break;
 	default:
 		draw_canvas_x = 0;

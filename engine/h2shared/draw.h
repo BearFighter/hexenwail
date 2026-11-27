@@ -125,6 +125,7 @@ typedef enum {
 	CANVAS_DEFAULT,
 	CANVAS_SBAR,
 	CANVAS_MENU,
+	CANVAS_INVENTORY,
 	CANVAS_CROSSHAIR,
 	CANVAS_INFO,
 	CANVAS_INVALID = -1
@@ -135,6 +136,9 @@ void GL_SetCanvas (canvastype newcanvas);
 /* Logical size of the fixed 320-wide UI canvases, in canvas units.
    CANVAS_SBAR is anchored to the bottom of the screen and horizontally
    centred; CANVAS_MENU is anchored to the top and horizontally centred.
+   CANVAS_INVENTORY keeps the same 320x200 logical space but doubles the
+   automatic scale and centres both axes, so the full-screen overlay is
+   larger without rewriting its hit-testing coordinates.
    The status bar canvas is tall enough for the bumps above the main bar
    and for the lower info bar that drops down on showinfo -- it must match
    BAR_BUMP_HEIGHT + BAR_TOP_HEIGHT + BAR_BOTTOM_HEIGHT in sbar.c. */

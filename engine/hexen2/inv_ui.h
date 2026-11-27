@@ -16,8 +16,9 @@
 #define	INV_SCREEN_PAGES		8
 #define	INV_SCREEN_SLOTS		32
 
-/* Equipment slots live on page 0; slots 10-12 are the equipped rune sockets. */
-#define	INV_SCREEN_EQUIP_SLOTS	13
+/* Equipment slots live on page 0.  Slots 10-11 are the two guaranteed minor
+ * rune cells; 12-13 and 14-15 are the two split-capable major rune columns. */
+#define	INV_SCREEN_EQUIP_SLOTS	16
 
 /* Screen state owned by the m_inventory overlay and passed in/out. */
 typedef struct inv_screen_t
@@ -28,6 +29,15 @@ typedef struct inv_screen_t
 	int			hover_page;	/* pointer hover, if any */
 	int			hover_slot;
 	int			hover_valid;
+
+	int			drag_valid;	/* left-button drag in progress */
+	int			drag_page;
+	int			drag_slot;
+	int			drop_valid;	/* resolved drop target cell */
+	int			drop_page;
+	int			drop_slot;
+	int			pointer_x;
+	int			pointer_y;
 } inv_screen_t;
 
 void INV_ScreenInit (inv_screen_t *s, client_state_t *client);
@@ -36,5 +46,7 @@ void INV_ScreenDraw (const inv_screen_t *s);
 int		INV_ScreenKey (inv_screen_t *s, int key);
 int		INV_ScreenClick (inv_screen_t *s, int vx, int vy);
 void	INV_ScreenHover (inv_screen_t *s, int vx, int vy);
+void	INV_ScreenDragStart (inv_screen_t *s, int vx, int vy);
+void	INV_ScreenDragThink (inv_screen_t *s, int vx, int vy, int down);
 
 #endif	/* __HX2_INV_UI_H */

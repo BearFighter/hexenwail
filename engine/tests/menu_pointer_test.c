@@ -287,6 +287,32 @@ static void CanvasForward (const menu_canvas_t *c, int cx, int cy, float *fx, fl
 	*fy = ((float)cy + 0.5f) * (float)c->glheight / ((float)c->gh / s);
 }
 
+/* Where GL_SetCanvas puts the centre of CANVAS_INVENTORY unit (cx, cy): twice
+ * the menu scale, clamped on BOTH axes, with the 320x200 viewport centred. */
+static void InventoryForward (const menu_canvas_t *c, int cx, int cy,
+			      float *fx, float *fy)
+{
+	float	s = c->scale * 2.0f, px, py;
+	int	w, h, left, top;
+
+	if (c->gw > 0 && s > (float)c->gw / 320.0f)
+		s = (float)c->gw / 320.0f;
+	if (c->gh > 0 && s > (float)c->gh / 200.0f)
+		s = (float)c->gh / 200.0f;
+	if (s <= 0.0f)
+		s = 1.0f;
+	px = c->gw > 0 ? (float)c->glwidth / (float)c->gw : 1.0f;
+	py = c->gh > 0 ? (float)c->glheight / (float)c->gh : 1.0f;
+	w = (int)(320.0f * s * px);
+	h = (int)(200.0f * s * py);
+	left = (c->glwidth - w) / 2;
+	top = (c->glheight - h) / 2;
+	if (left < 0) left = 0;
+	if (top < 0) top = 0;
+	*fx = (float)left + ((float)cx + 0.5f) * (float)w / 320.0f;
+	*fy = (float)top + ((float)cy + 0.5f) * (float)h / 200.0f;
+}
+
 static const canvas_case_t canvas_cases[] =
 {
 	{ "800x600 auto",			 800,  600, 1.0f,	0 },
@@ -350,6 +376,49 @@ static void TestCanvasInverse (void)
 }
 
 /* HiDPI: SDL reports points, the canvas is laid out in pixels. */
+/* The inventory's larger, centred canvas must be the exact inverse of its
+ * hover/drag mapping; otherwise a click lands above the socket under it. */
+static void TestInventoryCanvasInverse (void)
+{
+	int	i, cx, cy;
+
+	for (i = 0; i < NUM_CANVAS_CASES; i++)
+	{
+		const canvas_case_t	*k = &canvas_cases[i];
+		menu_canvas_t		c = CanvasFor(k);
+		float			fx, fy;
+		int			bad = 0;
+
+		for (cy = 0; cy < 200 && !bad; cy += 3)
+		{
+			for (cx = 0; cx < 320; cx += 7)
+			{
+				InventoryForward(&c, cx, cy, &fx, &fy);
+				if (MenuPointer_InventoryCanvasX(&c, fx) != cx ||
+				    MenuPointer_InventoryCanvasY(&c, fy) != cy)
+				{
+					CHECK(0, "%s: inventory (%d,%d) -> screen (%.1f,%.1f) -> (%d,%d)",
+					      k->name, cx, cy, fx, fy,
+					      MenuPointer_InventoryCanvasX(&c, fx),
+					      MenuPointer_InventoryCanvasY(&c, fy));
+					bad = 1;
+					break;
+				}
+			}
+		}
+
+		/* The backpack starts at logical x=126,y=58; the detail strip at
+		 * y=180 must still be under the pointer after the viewport moves. */
+		InventoryForward(&c, 126 + 9 * 19 + 8, 58 + 5 * 19 + 8, &fx, &fy);
+		CHECK(MenuPointer_InventoryCanvasX(&c, fx) == 126 + 9 * 19 + 8,
+		      "%s: last backpack cell x maps to %d", k->name,
+		      MenuPointer_InventoryCanvasX(&c, fx));
+		CHECK(MenuPointer_InventoryCanvasY(&c, fy) == 58 + 5 * 19 + 8,
+		      "%s: last backpack cell y maps to %d", k->name,
+		      MenuPointer_InventoryCanvasY(&c, fy));
+	}
+}
+
 static void TestPixelDensity (void)
 {
 	canvas_case_t	k = { "density 2, 960x540 points", 1920, 1080, 1.0f, 0 };
@@ -408,6 +477,7 @@ static void TestBarDrawn (void)
 int main (void)
 {
 	TestCanvasInverse();
+	TestInventoryCanvasInverse();
 	TestPixelDensity();
 	TestLetterbox();
 	TestBarDrawn();
