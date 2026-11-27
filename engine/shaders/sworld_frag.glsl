@@ -61,11 +61,20 @@ FRAG_IN(2) in vec4 v_color;
 FRAG_IN(3) in float v_fogdist;
 FRAG_IN(4) in vec2 v_worldxy;
 FRAG_IN(5) in highp vec3 v_eyepos;      /* highp: see sworld_vert (uhexen2-mfql) */
+/* Literal SDL_GPU slots: ten stage samplers, two stage blocks, then the four
+ * moment samplers at 10..13, OitFrag at 2 and the two followers below. */
 #ifdef OIT
 #define OIT_TEX0 10
+#define OIT_TEX1 11
+#define OIT_TEX2 12
+#define OIT_TEX3 13
 #define OIT_UBO 2
 #include "oit.inc"
+#define LIGHTGRID_SET2_SLOT 14
+#define DLSHADOW_SET3_SLOT 3
 #else
+#define LIGHTGRID_SET2_SLOT 10
+#define DLSHADOW_SET3_SLOT 2
 FRAG_OUT(0) out vec4 fragColor;
 #endif
 

@@ -729,9 +729,20 @@ static void GL_RendererStatus_f (void)
 
 static void GL_RendererSafe_f (void)
 {
+	/* Keep this the conservative end of every switch a preset can move:
+	 * post-process off, defaults restored, and both far clips back to the
+	 * stock contract.  Set by name so the shared client builds do not need
+	 * a declaration for a cvar their renderer never registers. */
 	Cvar_Set("r_hdr", "0");
+	Cvar_Set("r_hdr_exposure", "1");
 	Cvar_Set("r_oit", "0");
 	Cvar_Set("r_bloom", "0");
+	Cvar_Set("r_bloom_intensity", "1");
+	Cvar_Set("r_bloom_threshold", "1");
+	Cvar_Set("r_ssao", "0");
+	Cvar_Set("r_softparticles", "0");
+	Cvar_Set("r_farclip", "4096");
+	Cvar_Set("gl_farclip", "16384");
 	Cvar_Set("r_scale", "1");
 	Cvar_Set("r_softemu", "0");
 	Cvar_Set("gl_fxaa", "0");

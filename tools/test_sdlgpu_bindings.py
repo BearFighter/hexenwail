@@ -34,9 +34,11 @@ numbers.
 
 What is checked, per stage, from the .vk.spv itself (the bytes SDL_GPU will
 be handed) rather than from the GLSL: binding numbers there come through
-layout.inc macros, per-stage #defines (OIT_TEX0, LIGHTGRID_SET2_SLOT,
-DLSHADOW_SET3_SLOT), arithmetic and #ifdef OIT twins, and a source-level
-check would have to re-implement the GLSL preprocessor to see them.
+layout.inc macros, literal per-stage #defines (OIT_TEX0..3, OIT_UBO,
+LIGHTGRID_SET2_SLOT, DLSHADOW_SET3_SLOT) and #ifdef OIT twins, and a
+source-level check would have to re-implement the GLSL preprocessor to see
+them.  The literals are also what glslang requires: it rejects an arithmetic
+layout-id.
 
   * every resource carries DescriptorSet and Binding;
   * each resource class sits in the set the stage's rule gives it;

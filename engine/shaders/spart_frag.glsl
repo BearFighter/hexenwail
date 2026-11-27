@@ -16,8 +16,13 @@ FRAG_IN(0) in vec2 v_texcoord;
 FRAG_IN(1) in vec4 v_color;
 FRAG_IN(2) in float v_fogdist;
 
+/* Literal SDL_GPU slots: one stage sampler, one stage block, then the four
+ * moment samplers at 1..4 and OitFrag at 1. */
 #ifdef OIT
 #define OIT_TEX0 1
+#define OIT_TEX1 2
+#define OIT_TEX2 3
+#define OIT_TEX3 4
 #define OIT_UBO 1
 #include "oit.inc"
 #else

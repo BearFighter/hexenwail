@@ -234,9 +234,22 @@ if not es or "vec4 color = tex * v_color;" not in es.group(1):
 # The OIT twins are `#define OIT 1` variants: the colour output is the #else
 # arm of the oit.inc include (#450 W3; tools/test_oit_frag_block.py pins the
 # arm's slot counts and the C side).
-if not re.search(r'#ifdef OIT\s*\n\s*#define OIT_TEX0 \d+\s*\n\s*#define OIT_UBO \d+\s*\n\s*#include "oit\.inc"\s*\n'
-                 r'\s*#else\s*\n\s*FRAG_OUT\(0\) out vec4 fragColor;\s*\n\s*#endif\s*\n', frag):
+arm = re.search(r'#ifdef OIT\s*\n\s*#define OIT_TEX0 (\d+)\s*\n\s*#define OIT_TEX1 (\d+)\s*\n\s*'
+                r'#define OIT_TEX2 (\d+)\s*\n\s*#define OIT_TEX3 (\d+)\s*\n\s*#define OIT_UBO (\d+)\s*\n\s*'
+                r'#include "oit\.inc"\s*\n(?:#define [^\n]*\n\s*)*'
+                r'#else\s*\n(?:#define [^\n]*\n\s*)*FRAG_OUT\(0\) out vec4 fragColor;\s*\n'
+                r'(?:#define [^\n]*\n\s*)*#endif\s*\n', frag)
+if not arm:
     errors.append("salias_frag.glsl: the colour output must be the #else arm of `#ifdef OIT ... #include \"oit.inc\"`")
+else:
+    base, ubo_slot = int(arm.group(1)), int(arm.group(5))
+    if [int(arm.group(i)) for i in range(2, 5)] != [base + 1, base + 2, base + 3]:
+        errors.append("salias_frag.glsl: OIT_TEX0..3 must be consecutive literal slots")
+    for name, wants in (("LIGHTGRID_SET2_SLOT", (6, base + 4)),
+                        ("DLSHADOW_SET3_SLOT", (2, ubo_slot + 1))):
+        found = sorted(int(x) for x in re.findall(rf"#define {name} (\d+)\b", frag))
+        if found != sorted(wants):
+            errors.append(f"salias_frag.glsl: {name} must be {wants}, is {found}")
 
 # ------------------------------------------------------------ the .inc copies
 

@@ -179,9 +179,10 @@ for name, text in (("sshadow_vert", svert), ("sshadow_alias_vert", avert)):
 if re.search(r"\buniform\s+ShadowPass\b", strip(read("engine/shaders/sshadow_frag.glsl"))):
     errors.append("sshadow_frag declares ShadowPass; the fragment stage reads only the varying")
 if not re.search(r"FRAG_UBO\(DLSHADOW_SET3_SLOT\)\s+uniform\s+DlShadow\b", dls) \
-        or not re.search(r"#ifdef OIT_TEX_COUNT\s*#define DLSHADOW_SET3_SLOT\s*\(DLSHADOW_UBO_SLOT \+ 1\)\s*#else\s*"
-                         r"#define DLSHADOW_SET3_SLOT\s*DLSHADOW_UBO_SLOT\s*#endif", dls):
-    errors.append("DlShadow's SDL_GPU slot must be DLSHADOW_UBO_SLOT, one later in an OIT twin (after OitFrag)")
+        or not re.search(r"#ifndef DLSHADOW_SET3_SLOT\s*#define DLSHADOW_SET3_SLOT\s+DLSHADOW_UBO_SLOT\s*#endif", dls) \
+        or re.search(r"#define\s+DLSHADOW_SET3_SLOT\s*\([^)]*\+", dls):
+    errors.append("DlShadow's SDL_GPU slot must be a literal DLSHADOW_SET3_SLOT supplied by the stage, "
+                  "one later in an OIT twin (after OitFrag)")
 
 # ------------------------------------------------------------ bindings
 allbind = {}

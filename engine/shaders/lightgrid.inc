@@ -9,10 +9,11 @@
  *   u_lightgrid      the usampler3D of per-froxel light masks
  *   u_lightgrid_xy   vec4: xy viewport origin, zw froxels per pixel
  *   u_lightgrid_z    vec2: zlogscale, zlogbias
- *   LIGHTGRID_SSBO_SLOT  the light buffer's SDL_GPU index in set 2, which is
- *                    the number of sampled textures the stage declares
- *                    (an OIT twin's four more, from oit.inc, are added here
- *                    through OIT_TEX_COUNT, so the stage states one number)
+ *   LIGHTGRID_SSBO_SLOT  the light buffer's GL binding point and, in a
+ *                    non-OIT stage, its SDL_GPU index in set 2 (one past the
+ *                    stage's sampled textures).  An OIT twin also defines
+ *                    LIGHTGRID_SET2_SLOT as a literal four past that: glslang
+ *                    rejects arithmetic in a layout-id.
  * so each family can keep those in its own block: the world's in WorldFrag
  * (world.inc), the alias family's in AliasFrag (alias.inc).
  *
@@ -41,9 +42,7 @@
   #define LIGHT_SSBO_BINDING	8
 #endif
 
-#ifdef OIT_TEX_COUNT
-  #define LIGHTGRID_SET2_SLOT	(LIGHTGRID_SSBO_SLOT + OIT_TEX_COUNT)
-#else
+#ifndef LIGHTGRID_SET2_SLOT
   #define LIGHTGRID_SET2_SLOT	LIGHTGRID_SSBO_SLOT
 #endif
 

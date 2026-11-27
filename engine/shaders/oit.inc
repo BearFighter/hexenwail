@@ -7,14 +7,15 @@
  * compiled with "#define OIT 1" in its header chunk (GL_InitOITProgramSplit
  * appends it).  Before including it the stage defines
  *
- *     OIT_TEX0  its sampler count
- *     OIT_UBO   its uniform-block count
+ *     OIT_TEX0..3  its four literal SDL_GPU sampler slots in set 2
+ *     OIT_UBO      its literal SDL_GPU slot for OitFrag in set 3
  *
- * the SDL_GPU slots this file's samplers and block take, in set 2 and set 3:
- * after the stage's own, because SDL_GPU numbers a stage's resources from 0
- * with no gaps.  The light buffer, which follows the samplers in set 2, moves
- * up by OIT_TEX_COUNT on its own (lightgrid.inc).  The GL arms ignore every
- * one of these numbers.
+ * All five are written as literal numbers by the includer, not derived here
+ * from OIT_TEX0: glslang rejects `layout(binding = 10 + 1)` with "non-literal
+ * layout-id value".  SDL_GPU numbers a stage's resources from 0 with no gaps,
+ * so these follow the stage's own samplers and blocks.  The includer gives
+ * lightgrid.inc and dlshadow.inc their literal post-OIT slots for the same
+ * reason.  The GL arms ignore every one of these numbers.
  *
  * The stage's main() is renamed main_body() and this file's main() wraps it
  * (the rename trick from Ironwail).  fragColor is a plain global here rather
@@ -59,8 +60,8 @@
 #ifndef OIT_INC
 #define OIT_INC
 
-#if !defined(OIT_TEX0) || !defined(OIT_UBO)
-#error oit.inc needs OIT_TEX0 and OIT_UBO, the stage sampler and block counts, defined first
+#if !defined(OIT_TEX0) || !defined(OIT_TEX1) || !defined(OIT_TEX2) || !defined(OIT_TEX3) || !defined(OIT_UBO)
+#error oit.inc needs literal OIT_TEX0..3 and OIT_UBO, the stage's SDL_GPU slots, defined first
 #endif
 
 vec4 fragColor = vec4(0.0);
@@ -74,9 +75,9 @@ FRAG_UBO(OIT_UBO) uniform OitFrag {
 #define u_oit_mode  u_foit.x
 #define u_mboit_ms  u_foit.y
 FRAG_TEX(OIT_TEX0) uniform sampler2D u_mboit_b0;
-FRAG_TEX(OIT_TEX0 + 1) uniform sampler2D u_mboit_mom;
-FRAG_TEX(OIT_TEX0 + 2) uniform sampler2DMS u_mboit_b0_ms;
-FRAG_TEX(OIT_TEX0 + 3) uniform sampler2DMS u_mboit_mom_ms;
+FRAG_TEX(OIT_TEX1) uniform sampler2D u_mboit_mom;
+FRAG_TEX(OIT_TEX2) uniform sampler2DMS u_mboit_b0_ms;
+FRAG_TEX(OIT_TEX3) uniform sampler2DMS u_mboit_mom_ms;
 #define OIT_TEX_COUNT 4
 #define MBOIT_OVERESTIMATION 0.25
 /* log-warp view distance to [-1,1]: 14 octaves from the 4-unit near plane,

@@ -1,0 +1,178 @@
+# sweep-visual-switches.steps -- the visual switches that the Display presets
+# now drive, exercised at the large-world far-clip contract: both r_farclip
+# (the CPU BSP subtree cull) and gl_farclip (the projection plane) at 65536.
+# Covers FXAA, HDR and its exposure, bloom, SSAO quality and both OIT modes.
+# Needs the retail data in <basedir>/data1.
+#
+# This is a same-binary gate.  Run the OLD and NEW binaries with identical
+# arguments and settings, then compare frame for frame:
+#
+#   A="-fsaa 0 +gamma 1 +map demo1 +r_farclip 65536 +gl_farclip 65536"
+#   STEPS=tools/sweep-visual-switches.steps ENGINE=$OLD \
+#     ./tools/headless-drive.sh script /tmp/vs-old ~/hexen2 $A
+#   STEPS=tools/sweep-visual-switches.steps ENGINE=$NEW \
+#     ./tools/headless-drive.sh script /tmp/vs-new ~/hexen2 $A
+#   ./tools/shot-diff.sh /tmp/vs-old /tmp/vs-new 200x24+100+576
+#
+# For GL against -gpu instead, use PSNR_MIN and calibrate it from three runs
+# of one binary (see tools/sweep-world-gpu.steps); Mesa's two rasterizers agree
+# to about 40 dB at these switches.  Do NOT compare this sweep against a
+# different far clip: the depth precision change is the thing under test, not
+# noise.  The steps start with `renderer_safe` and then raise both far clips,
+# so a safe-mode reset that forgot a cvar shows up in the first frame.
+#
+# THE FRAMES.  01 is the identity chain at 65536.  02 is FXAA.  03/04 are HDR
+# and its exposure.  05 is bloom on the same camera; 06/07 use the torch room
+# so the bright-pass has something to find and add HDR over bloom.  08..10
+# put a tombstone on the graveyard wall and step SSAO through off/low/high.
+# 11..13 are the pools with OIT off, weighted (1) and moment-based (2), which
+# is the mode that needs literal SDL_GPU layout IDs in oit.inc.
+#
+# Every camera is static and paused, the sky scroll is stopped, particles and
+# dynamic lights are off and no console frame is taken, so no animated cursor
+# mask is needed.  The one mask above is the mini status bar's health: the
+# player can take a knock at spawn before god is on.  REPORT-VISUAL-* rechecks
+# the switch values and the unrouted GL count on the last camera.
+
+sleep 20
+cmd echo REPORT-VISUAL-BOOT-BEGIN
+cmd renderer_safe
+cmd echo REPORT-VISUAL-BOOT-END
+cmd god
+cmd notarget
+cmd noclip
+cmd con_notifytime 0
+cmd viewsize 120
+cmd crosshair 0
+cmd showpause 0
+
+# The contract under test.  renderer_safe puts these back to 4096/16384.
+cmd r_farclip 65536
+cmd gl_farclip 65536
+
+cmd r_skyspeed_back 0
+cmd r_skyspeed_front 0
+cmd r_skybox_speed 0
+cmd r_flatlightstyles 1
+cmd r_dynamic 0
+cmd r_gpulightstyles 0
+cmd r_dlight_occlusion 0
+cmd r_alias_gpu 0
+cmd r_particles 0
+cmd r_drawparticles 0
+cmd fog 0
+cmd gl_texture_anisotropy 1
+cmd r_caustics 0
+cmd gl_glows 0
+cmd gl_missile_glows 0
+cmd gl_other_glows 0
+cmd gl_glow_intensity 0.4
+cmd r_drawviewmodel 0
+cmd r_drawentities 0
+cmd r_wateralpha 0.33
+cmd r_lavaalpha 0
+cmd r_water_pixel_warp 0
+cmd r_waterwarp 0
+cmd gl_waterwarp_speed 0
+cmd r_motionblur 0
+cmd r_softparticles 1
+cmd r_softemu 0
+cmd r_scale 1
+cmd gl_fxaa 0
+cmd r_hdr 0
+cmd r_hdr_exposure 1
+cmd r_bloom 0
+cmd r_bloom_intensity 1
+cmd r_bloom_threshold 1
+cmd r_ssao 0
+cmd r_ssao_debug 0
+cmd r_oit 0
+sleep 2
+
+# --- graveyard: the identity chain and the screen-space switches ---
+cmd setpos -918 -2034 0 -20 45 0
+sleep 2
+cmd pause
+shot 01-base-farclip
+cmd gl_fxaa 1
+shot 02-fxaa
+cmd gl_fxaa 0
+cmd r_hdr 1
+shot 03-hdr
+cmd r_hdr_exposure 0.5
+shot 04-hdr-exposure
+cmd r_hdr_exposure 1
+cmd r_hdr 0
+cmd r_bloom 1
+cmd r_bloom_threshold 0.5
+shot 05-bloom
+cmd r_bloom 0
+cmd r_bloom_threshold 1
+cmd pause
+
+# --- torch room: a bright source for the bloom / HDR combination ---
+cmd setpos -1536 1900 -450 0 90 0
+sleep 2
+cmd pause
+cmd gl_glows 1
+cmd gl_missile_glows 1
+cmd gl_other_glows 1
+cmd gl_glow_intensity 1
+cmd r_bloom 1
+cmd r_bloom_threshold 0.5
+shot 06-torch-bloom
+cmd r_hdr 1
+shot 07-torch-hdr-bloom
+cmd r_hdr 0
+cmd r_bloom 0
+cmd r_bloom_threshold 1
+cmd gl_glows 0
+cmd gl_missile_glows 0
+cmd gl_other_glows 0
+cmd gl_glow_intensity 0.4
+cmd pause
+
+# --- SSAO: a contact-casting alias model on the graveyard wall ---
+cmd r_drawentities 1
+cmd testentity models/tombstn1.mdl -560 -2200 184 0 0 0
+cmd setpos -312 -2128 284 0 0 0
+sleep 2
+cmd pause
+shot 08-ssao-off
+cmd r_ssao 1
+shot 09-ssao-low
+cmd r_ssao 3
+shot 10-ssao-high
+cmd r_ssao 0
+cmd pause
+cmd r_drawentities 0
+
+# --- OIT: translucent water into the scene FBO at the same far clip ---
+cmd setpos -1007 2200 -442 25 152 0
+sleep 2
+cmd pause
+shot 11-oit-off
+cmd r_oit 1
+shot 12-oit-weighted
+cmd r_oit 2
+shot 13-oit-moment
+cmd r_oit 0
+cmd pause
+
+# --- report: switch values and unrouted calls on a stable camera ---
+cmd gpu_unrouted reset
+cmd setpos -918 -2034 0 -20 45 0
+sleep 2
+cmd echo REPORT-VISUAL-BEGIN
+cmd r_farclip
+cmd gl_farclip
+cmd gl_fxaa
+cmd r_hdr
+cmd r_hdr_exposure
+cmd r_bloom
+cmd r_ssao
+cmd r_oit
+cmd gpu_unrouted
+cmd renderer_status
+cmd echo REPORT-VISUAL-END
+sleep 1

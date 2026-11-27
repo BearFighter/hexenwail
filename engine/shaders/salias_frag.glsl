@@ -79,11 +79,20 @@ FRAG_TEX(4) uniform usampler3D u_lightgrid;
 FRAG_TEX(5) uniform highp samplerCubeArrayShadow u_dlshadowmap;
 #endif
 
+/* Literal SDL_GPU slots: six stage samplers, two stage blocks, then the four
+ * moment samplers at 6..9, OitFrag at 2 and the two followers below. */
 #ifdef OIT
 #define OIT_TEX0 6
+#define OIT_TEX1 7
+#define OIT_TEX2 8
+#define OIT_TEX3 9
 #define OIT_UBO 2
 #include "oit.inc"
+#define LIGHTGRID_SET2_SLOT 10
+#define DLSHADOW_SET3_SLOT 3
 #else
+#define LIGHTGRID_SET2_SLOT 6
+#define DLSHADOW_SET3_SLOT 2
 FRAG_OUT(0) out vec4 fragColor;
 #endif
 

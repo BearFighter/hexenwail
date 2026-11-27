@@ -2916,6 +2916,24 @@ static int M_DlightOcclusion (void)
 	Cvar_SetValue ("r_dlight_occlusion", M_DLOCCLUSION_MAX);
 #endif
 
+/* The rest of the post-process / transparency chain.  These cvars are set by
+ * name so a software or ES config can load a desktop preset without the rows
+ * claiming a feature that build does not have: the engine already falls back
+ * when the capability is missing.  Far clip is part of the preset because the
+ * large-world contract needs both the CPU BSP cull and the projection plane
+ * moved together; Ultra is the first tier that does the full 65536. */
+#define PRESET_EFFECTS(hdr, bloom, oit, ssao, soft, rclip, gclip) \
+	Cvar_SetValue ("r_hdr", hdr); \
+	Cvar_SetValue ("r_hdr_exposure", 1.0f); \
+	Cvar_SetValue ("r_bloom", bloom); \
+	Cvar_SetValue ("r_bloom_intensity", 1.0f); \
+	Cvar_SetValue ("r_bloom_threshold", 1.0f); \
+	Cvar_SetValue ("r_oit", oit); \
+	Cvar_SetValue ("r_ssao", ssao); \
+	Cvar_SetValue ("r_softparticles", soft); \
+	Cvar_SetValue ("r_farclip", rclip); \
+	Cvar_SetValue ("gl_farclip", gclip);
+
 //=============================================================================
 /* DISPLAY MENU */
 
@@ -3063,6 +3081,7 @@ static void M_Display_AdjustSliders (int dir)
 			Cvar_SetValue ("gl_glow_intensity", 0.4f);
 			Cvar_SetValue ("gl_torch_dlight", 1);
 			Cvar_SetValue ("r_lerpmodels", 0);	/* snappy lo-fi animation */
+			PRESET_EFFECTS (0, 0, 0, 0, 0, 4096, 16384)
 			PRESET_SHADOWS (64, 8, 0, 2, 1)	/* nearest texels, the lo-fi edge */
 			PRESET_COMMON
 		}
@@ -3085,6 +3104,7 @@ static void M_Display_AdjustSliders (int dir)
 			Cvar_SetValue ("gl_glow_intensity", 0.4f);
 			Cvar_SetValue ("gl_torch_dlight", 1);
 			Cvar_SetValue ("r_lerpmodels", 0);	/* snappy lo-fi animation */
+			PRESET_EFFECTS (0, 0, 0, 0, 0, 4096, 16384)
 			PRESET_SHADOWS (64, 8, 0, 2, 1)	/* nearest texels, the lo-fi edge */
 			PRESET_COMMON
 		}
@@ -3107,6 +3127,7 @@ static void M_Display_AdjustSliders (int dir)
 			Cvar_SetValue ("gl_glow_intensity", 0.4f);
 			Cvar_SetValue ("gl_torch_dlight", 1);
 			Cvar_SetValue ("r_lerpmodels", 0);	/* snappy lo-fi animation */
+			PRESET_EFFECTS (0, 0, 0, 0, 0, 4096, 16384)
 			PRESET_SHADOWS (64, 8, 0, 2, 1)	/* nearest texels, the lo-fi edge */
 			PRESET_COMMON
 		}
@@ -3127,6 +3148,7 @@ static void M_Display_AdjustSliders (int dir)
 			Cvar_SetValue ("gl_missile_glows", 1);
 			Cvar_SetValue ("gl_other_glows", 1);
 			Cvar_SetValue ("gl_glow_intensity", 0.2f);
+			PRESET_EFFECTS (0, 0, 0, 0, 0, 4096, 16384)
 			PRESET_SHADOWS (128, 16, 1, 4, 1)
 			PRESET_COMMON
 		}
@@ -3148,6 +3170,7 @@ static void M_Display_AdjustSliders (int dir)
 			Cvar_SetValue ("gl_other_glows", 1);
 			Cvar_SetValue ("gl_glow_intensity", 0.4f);
 			Cvar_SetValue ("gl_torch_dlight", 1);
+			PRESET_EFFECTS (0, 0, 0, 0, 1, 4096, 16384)
 			PRESET_SHADOWS (128, 16, 1, 4, 1)
 			PRESET_COMMON
 		}
@@ -3169,6 +3192,7 @@ static void M_Display_AdjustSliders (int dir)
 			Cvar_SetValue ("gl_other_glows", 1);
 			Cvar_SetValue ("gl_glow_intensity", 1.0f);
 			Cvar_SetValue ("gl_torch_dlight", 1);
+			PRESET_EFFECTS (1, 1, 1, 2, 1, 16384, 16384)
 			PRESET_SHADOWS (256, 16, 1, 8, 2)	/* + the models' shadows */
 			PRESET_COMMON
 		}
@@ -3190,6 +3214,7 @@ static void M_Display_AdjustSliders (int dir)
 			Cvar_SetValue ("gl_other_glows", 1);
 			Cvar_SetValue ("gl_glow_intensity", 1.0f);
 			Cvar_SetValue ("gl_torch_dlight", 1);
+			PRESET_EFFECTS (1, 1, 2, 3, 1, 65536, 65536)
 			PRESET_SHADOWS (512, 16, 1, 16, 2)	/* every map may redraw every frame */
 			PRESET_COMMON
 		}
@@ -3628,6 +3653,9 @@ enum
 	REND_MOTIONBLUR,
 	REND_HDR,
 	REND_HDR_EXPOSURE,
+	REND_BLOOM,
+	REND_OIT,
+	REND_SSAO,
 	REND_RENDERER,
 	REND_ITEMS
 };
@@ -3661,6 +3689,9 @@ static const char *rend_labels[REND_ITEMS] = {
 	"Motion Blur   :",	/* REND_MOTIONBLUR */
 	"HDR Tonemap   :",	/* REND_HDR */
 	"HDR Exposure  :",	/* REND_HDR_EXPOSURE */
+	"Bloom         :",	/* REND_BLOOM */
+	"OIT Mode      :",	/* REND_OIT */
+	"SSAO Quality  :",	/* REND_SSAO */
 	"Renderer      :",	/* REND_RENDERER */
 };
 
@@ -3713,6 +3744,9 @@ static qboolean M_Rendering_IsSkip (int i)
 	case REND_MOTIONBLUR:
 	case REND_HDR:
 	case REND_HDR_EXPOSURE:
+	case REND_BLOOM:
+	case REND_OIT:
+	case REND_SSAO:
 	case REND_RENDERER:	/* hidden here; the GL side hides it while the count is 1 */
 		return true;
 	default:
@@ -3733,6 +3767,16 @@ static qboolean M_Rendering_IsSkip (int i)
 	if (i == REND_ANISOTROPY && !gl_renderer_caps.anisotropy)
 		return true;
 	if ((i == REND_HDR || i == REND_HDR_EXPOSURE) && !gl_renderer_caps.float_color_buffer)
+		return true;
+	/* The other post-process switches follow the capabilities the engine
+	 * already reports: bloom needs the chain, WBOIT needs indexed blending
+	 * and MSAA resolve, SSAO needs compute.  Hiding rather than offering a
+	 * dead toggle also keeps the large-world presets honest on the ES tier. */
+	if (i == REND_BLOOM && !gl_renderer_caps.postprocess)
+		return true;
+	if (i == REND_OIT && !gl_renderer_caps.oit)
+		return true;
+	if (i == REND_SSAO && !gl_renderer_caps.compute_shaders)
 		return true;
 	/* One backend in this binary means nothing to choose: hide the row
 	 * rather than offer a choice of one.  When #340 lands, the table
@@ -3927,6 +3971,27 @@ static void M_Rendering_AdjustSliders (int dir)
 		Cvar_SetValue ("r_hdr_exposure", f);
 		break;
 	}
+	/* By name, as in PRESET_EFFECTS: the shared client has to build where
+	 * the backing renderer does not register the cvar at all. */
+	case REND_BLOOM:
+		Cvar_SetValue ("r_bloom", Cvar_VariableValue ("r_bloom") > 0 ? 0 : 1);
+		break;
+	case REND_OIT:
+	{
+		int v = (int) Cvar_VariableValue ("r_oit") + dir;
+		if (v < 0) v = 2;
+		if (v > 2) v = 0;
+		Cvar_SetValue ("r_oit", v);
+		break;
+	}
+	case REND_SSAO:
+	{
+		int v = (int) Cvar_VariableValue ("r_ssao") + dir;
+		if (v < 0) v = 0;
+		if (v > 3) v = 3;
+		Cvar_SetValue ("r_ssao", v);
+		break;
+	}
 	case REND_RENDERER:
 	{
 		/* Cycle r_renderer among the backends this binary was compiled
@@ -3972,6 +4037,9 @@ static const char *M_Rendering_Note (int row)
 	case REND_LIQUIDWARP:	return "Ripple strength on liquid surfaces";	/* gl_waterwarp_amount */
 	case REND_FLASHINTENSITY: return "Reach of muzzle and effect lights";	/* gl_flashintensity */
 	case REND_HDR:		return "ACES tonemapping for bright scenes";	/* r_hdr */
+	case REND_BLOOM:	return "Glow from pixels above the threshold";	/* r_bloom */
+	case REND_OIT:		return "2 uses moment OIT, 1 weighted";	/* r_oit */
+	case REND_SSAO:		return "Half/full-res contact occlusion";	/* r_ssao */
 	case REND_RENDERER:	return "takes effect after restart";		/* r_renderer */
 	default:		return NULL;
 	}
@@ -4181,6 +4249,29 @@ static void M_Rendering_Draw (void)
 			M_DrawSliderValue (220, 92 + 8*REND_HDR_EXPOSURE,
 				(r_hdr_exposure.value - 0.1f) / 3.9f,
 				"%.2f", r_hdr_exposure.value);
+	}
+
+	if (!M_Rendering_IsSkip(REND_BLOOM))
+	{
+		M_Print (76, 92 + 8*REND_BLOOM, rend_labels[REND_BLOOM]);
+		M_DrawCheckbox (220, 92 + 8*REND_BLOOM, Cvar_VariableValue ("r_bloom") > 0);
+	}
+
+	if (!M_Rendering_IsSkip(REND_OIT))
+	{
+		int v = (int) Cvar_VariableValue ("r_oit");
+		M_Print (76, 92 + 8*REND_OIT, rend_labels[REND_OIT]);
+		M_PrintWhite (220, 92 + 8*REND_OIT,
+			      v == 2 ? "Moment" : v == 1 ? "Weighted" : "Off");
+	}
+
+	if (!M_Rendering_IsSkip(REND_SSAO))
+	{
+		int v = (int) Cvar_VariableValue ("r_ssao");
+		const char *quality = v >= 3 ? "High" : v == 2 ? "Medium" :
+				      v == 1 ? "Low" : "Off";
+		M_Print (76, 92 + 8*REND_SSAO, rend_labels[REND_SSAO]);
+		M_PrintWhite (220, 92 + 8*REND_SSAO, quality);
 	}
 
 	if (!M_Rendering_IsSkip(REND_RENDERER))

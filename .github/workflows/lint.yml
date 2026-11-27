@@ -678,3 +678,9 @@ jobs:
       # after applying it, and the DLight Occlusion row (#97 P5).
       - name: Presets carry their shadow-map tier
         run: python3 tools/test_shadow_presets.py
+      # The seven presets also own the post-process switches and both far
+      # clips; safe mode has to restore them, the Rendering menu rows must be
+      # capability-gated, and the large-farclip screenshot sweep has to keep
+      # taking a frame for every switch.  All source-only, no retail data.
+      - name: Visual switches agree across presets, menu and diff sweep
+        run: python3 tools/test_visual_switch_gate.py

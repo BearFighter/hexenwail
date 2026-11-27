@@ -301,11 +301,23 @@ for f in FRAGS:
     # The colour output: sworld_frag's is the #else arm of the oit.inc include
     # its OIT twin takes (#450 W3; tools/test_oit_frag_block.py pins the arm),
     # the opaque twin, which has no OIT twin, declares it plainly.
-    arm = re.search(r'#ifdef OIT\s*\n\s*#define OIT_TEX0 \d+\s*\n\s*#define OIT_UBO \d+\s*\n\s*#include "oit\.inc"\s*\n'
-                    r'\s*#else\s*\n\s*FRAG_OUT\(0\) out vec4 fragColor;\s*\n\s*#endif\s*\n', text)
+    arm = re.search(r'#ifdef OIT\s*\n\s*#define OIT_TEX0 (\d+)\s*\n\s*#define OIT_TEX1 (\d+)\s*\n\s*'
+                    r'#define OIT_TEX2 (\d+)\s*\n\s*#define OIT_TEX3 (\d+)\s*\n\s*#define OIT_UBO (\d+)\s*\n\s*'
+                    r'#include "oit\.inc"\s*\n(?:#define [^\n]*\n\s*)*'
+                    r'#else\s*\n(?:#define [^\n]*\n\s*)*FRAG_OUT\(0\) out vec4 fragColor;\s*\n'
+                    r'(?:#define [^\n]*\n\s*)*#endif\s*\n', text)
     if f == "sworld_frag" and not arm:
         errors.append("sworld_frag.glsl: the colour output must be the #else arm of `#ifdef OIT ... "
                       "#include \"oit.inc\"` (world_oit compiles it with OIT defined)")
+    elif f == "sworld_frag":
+        base, ubo_slot = int(arm.group(1)), int(arm.group(5))
+        if [int(arm.group(i)) for i in range(2, 5)] != [base + 1, base + 2, base + 3]:
+            errors.append("sworld_frag.glsl: OIT_TEX0..3 must be consecutive literal slots")
+        for name, wants in (("LIGHTGRID_SET2_SLOT", (10, base + 4)),
+                            ("DLSHADOW_SET3_SLOT", (2, ubo_slot + 1))):
+            found = sorted(int(x) for x in re.findall(rf"#define {name} (\d+)\b", text))
+            if found != sorted(wants):
+                errors.append(f"sworld_frag.glsl: {name} must be {wants}, is {found}")
     if f == "sworld_opaque_frag" and (arm or "oit.inc" in code
                                       or text.count("FRAG_OUT(0) out vec4 fragColor;\n") != 1):
         errors.append("sworld_opaque_frag.glsl has no OIT twin: one plain colour output, no oit.inc")

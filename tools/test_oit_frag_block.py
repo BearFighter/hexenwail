@@ -22,11 +22,12 @@ one ivec4.  Checks the pieces that have to move together:
     the transition's write before it draws;
   * the shader files: salias_frag, sworld_frag and spart_frag -- and only they
     -- take oit.inc, each as the #ifdef OIT arm whose #else is the colour
-    output, with OIT_TEX0 / OIT_UBO equal to the stage's own sampler and block
-    counts (so SDL_GPU's slots stay gapless); oit.inc declares no loose
-    non-opaque uniform, its four samplers at OIT_TEX0 + 0..3 = OIT_TEX_COUNT,
-    its two outputs at 0 and 1, and renames main last; lightgrid.inc moves the
-    light buffer past those samplers, and the stages that read it include
+    output, with literal OIT_TEX0..3 / OIT_UBO slots after the stage's own
+    samplers and blocks (so SDL_GPU's slots stay gapless and glslang sees a
+    layout-id number, not an expression); oit.inc declares no loose non-opaque
+    uniform, its four samplers at OIT_TEX0..3 = OIT_TEX_COUNT, its two outputs
+    at 0 and 1, and renames main last; lightgrid.inc and dlshadow.inc honour
+    the stages' literal post-OIT slots, and the stages that read them include
     oit.inc first;
   * the C side: no oit_preamble, splice or GL_SetOITMode is left; the six
     twins are rows of gl_shader.c's program table (#340 P1b), desktop-only,
@@ -291,8 +292,11 @@ if oit_users < 5:
     errors.append(f"only {oit_users} functions pick an OIT program; the scan is broken")
 
 # ------------------------------------------------------------ the shader files
-ARM = re.compile(r'#ifdef OIT\s*\n\s*#define OIT_TEX0 (\d+)\s*\n\s*#define OIT_UBO (\d+)\s*\n\s*'
-                 r'#include "oit\.inc"\s*\n\s*#else\s*\n\s*FRAG_OUT\(0\) out vec4 fragColor;\s*\n\s*#endif\s*\n')
+ARM = re.compile(r'#ifdef OIT\s*\n\s*#define OIT_TEX0 (\d+)\s*\n\s*#define OIT_TEX1 (\d+)\s*\n\s*'
+                 r'#define OIT_TEX2 (\d+)\s*\n\s*#define OIT_TEX3 (\d+)\s*\n\s*#define OIT_UBO (\d+)\s*\n\s*'
+                 r'#include "oit\.inc"\s*\n(?:#define [^\n]*\n\s*)*'
+                 r'#else\s*\n(?:#define [^\n]*\n\s*)*FRAG_OUT\(0\) out vec4 fragColor;\s*\n'
+                 r'(?:#define [^\n]*\n\s*)*#endif\s*\n')
 
 
 def expand(name, seen=None):
@@ -318,22 +322,34 @@ for st in STAGES:
     text = (SH / st).read_text()
     m = ARM.search(text)
     if not m:
-        errors.append(f"{st}: the colour output must be the #else arm of `#ifdef OIT / OIT_TEX0 / OIT_UBO / "
-                      "#include \"oit.inc\"`")
+        errors.append(f"{st}: the colour output must be the #else arm of `#ifdef OIT / OIT_TEX0..3 / "
+                      "OIT_UBO / #include \"oit.inc\"`")
         continue
     code = strip_glsl(text)
     tex = [int(x) for x in re.findall(r"\bFRAG_TEX\((\d+)\)", code)]
     if tex != list(range(len(tex))):
         errors.append(f"{st}: FRAG_TEX must be 0..n-1 in order, is {tex}")
-    if int(m.group(1)) != len(tex):
-        errors.append(f"{st}: OIT_TEX0 is {m.group(1)}, the stage declares {len(tex)} samplers")
+    slots = [int(m.group(i)) for i in range(1, 6)]
+    base, ubo_slot = slots[0], slots[4]
+    if slots[1:4] != [base + 1, base + 2, base + 3]:
+        errors.append(f"{st}: OIT_TEX0..3 must be four consecutive literal slots, are {slots[:4]}")
+    if base != len(tex):
+        errors.append(f"{st}: OIT_TEX0 is {base}, the stage declares {len(tex)} samplers")
     # The stage's own fragment blocks; oit.inc's is FRAG_UBO(OIT_UBO), which
     # this does not match.
     ubo = [int(x) for x in re.findall(r"\bFRAG_UBO\((\d+)\)", strip_glsl(expand(st)))]
     if ubo != list(range(len(ubo))):
         errors.append(f"{st}: its own FRAG_UBO slots must be 0..n-1, are {ubo}")
-    if int(m.group(2)) != len(ubo):
-        errors.append(f"{st}: OIT_UBO is {m.group(2)}, the stage declares {len(ubo)} fragment blocks")
+    if ubo_slot != len(ubo):
+        errors.append(f"{st}: OIT_UBO is {ubo_slot}, the stage declares {len(ubo)} fragment blocks")
+    if st != "spart_frag.glsl":
+        # The two followers also need literal numbers: glslang rejects
+        # `layout(binding = LIGHTGRID_SSBO_SLOT + 4)`.
+        for name, wants in (("LIGHTGRID_SET2_SLOT", (len(tex), base + 4)),
+                            ("DLSHADOW_SET3_SLOT", (len(ubo), ubo_slot + 1))):
+            found = sorted(int(x) for x in re.findall(rf"#define {name} (\d+)\b", text))
+            if found != sorted(wants):
+                errors.append(f"{st}: {name} must be {wants[0]} in the plain arm and {wants[1]} in OIT, is {found}")
     if '#define UNIFORMS_FRAG\n#include "uniforms.inc"' not in text:
         errors.append(f"{st}: must read FragParams (GL_ImmEnd's flush is keyed on it)")
     if "lightgrid.inc" in text and text.index('#include "oit.inc"') > text.index('#include "lightgrid.inc"'):
@@ -342,11 +358,11 @@ for st in STAGES:
     if "main_body" in code:
         errors.append(f"{st}: names main_body; oit.inc renames the stage's main, the stage must not")
 
-samp = re.findall(r"\bFRAG_TEX\(OIT_TEX0(?:\s*\+\s*(\d+))?\)\s*uniform\s+(\w+)\s+(\w+)\s*;", oitc)
+samp = re.findall(r"\bFRAG_TEX\(OIT_TEX([0-3])\)\s*uniform\s+(\w+)\s+(\w+)\s*;", oitc)
 want_s = [(0, "sampler2D", "u_mboit_b0"), (1, "sampler2D", "u_mboit_mom"),
           (2, "sampler2DMS", "u_mboit_b0_ms"), (3, "sampler2DMS", "u_mboit_mom_ms")]
-if [(int(k or 0), ty, n) for k, ty, n in samp] != want_s:
-    errors.append(f"oit.inc's samplers are {samp}; they are the four moment targets at OIT_TEX0 + 0..3")
+if [(int(k), ty, n) for k, ty, n in samp] != want_s:
+    errors.append(f"oit.inc's samplers are {samp}; they are the four moment targets at literal OIT_TEX0..3")
 cnt = re.search(r"^\s*#\s*define\s+OIT_TEX_COUNT\s+(\d+)\s*$", oitc, re.M)
 if not cnt or int(cnt.group(1)) != len(samp):
     errors.append("oit.inc's OIT_TEX_COUNT must equal its sampler count")
@@ -361,12 +377,13 @@ for w in ("vec4 fragColor = vec4(0.0);", "FRAG_OUT(0) out vec4 out_accum;", "FRA
 tail = [l.strip() for l in oitc.splitlines() if l.strip()]
 if tail[-2:] != ["#define main main_body", "#endif"]:
     errors.append("oit.inc must end by renaming main (#define main main_body), after its own main()")
-if not re.search(r"#if !defined\(OIT_TEX0\) \|\| !defined\(OIT_UBO\)\n#error", oitc):
-    errors.append("oit.inc must refuse to build without OIT_TEX0 and OIT_UBO")
-if not re.search(r"#ifdef OIT_TEX_COUNT\s*#define LIGHTGRID_SET2_SLOT\s*\(LIGHTGRID_SSBO_SLOT \+ OIT_TEX_COUNT\)\s*"
-                 r"#else\s*#define LIGHTGRID_SET2_SLOT\s*LIGHTGRID_SSBO_SLOT\s*#endif", lightgrid) \
-        or "FRAG_SSBO(LIGHT_SSBO_BINDING, LIGHTGRID_SET2_SLOT)" not in lightgrid:
-    errors.append("lightgrid.inc must put the light buffer past oit.inc's samplers in an OIT twin")
+if not re.search(r"#if !defined\(OIT_TEX0\) \|\| !defined\(OIT_TEX1\) \|\| !defined\(OIT_TEX2\) \|\| "
+                 r"!defined\(OIT_TEX3\) \|\| !defined\(OIT_UBO\)\n#error", oitc):
+    errors.append("oit.inc must refuse to build without literal OIT_TEX0..3 and OIT_UBO")
+if not re.search(r"#ifndef LIGHTGRID_SET2_SLOT\s*#define LIGHTGRID_SET2_SLOT\s+LIGHTGRID_SSBO_SLOT\s*#endif", lightgrid) \
+        or "FRAG_SSBO(LIGHT_SSBO_BINDING, LIGHTGRID_SET2_SLOT)" not in lightgrid \
+        or re.search(r"#define\s+LIGHTGRID_SET2_SLOT\s*\([^)]*\+", lightgrid):
+    errors.append("lightgrid.inc must take its literal set-2 slot from the stage, past oit.inc's samplers")
 
 # ------------------------------------------------------------ the C side
 for p in sorted(list(H2.glob("*.[ch]")) + list((ROOT / "engine/hexen2").glob("*.[ch]"))):

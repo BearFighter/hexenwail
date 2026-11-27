@@ -7,11 +7,12 @@
  * twin, and after declaring
  *
  *   u_dlshadowmap        the samplerCubeArrayShadow, texture unit DLSHADOW_TMU
- *   DLSHADOW_UBO_SLOT    the stage's own fragment-block count, which is this
- *                        block's SDL_GPU slot in set 3 -- one more in an OIT
- *                        twin, whose OitFrag comes first (OIT_TEX_COUNT is
- *                        oit.inc's mark that it was included), the same
- *                        arrangement lightgrid.inc makes for its buffer
+ *   DLSHADOW_UBO_SLOT    this block's SDL_GPU slot in set 3 in a non-OIT
+ *                        stage (the stage's own fragment-block count).  An
+ *                        OIT twin also defines DLSHADOW_SET3_SLOT as a
+ *                        literal one past that, after OitFrag: glslang
+ *                        rejects arithmetic in a layout-id, just as for
+ *                        lightgrid.inc's buffer.
  *
  * WHAT A MAP HOLDS.  One cube per shadowed light, its six faces drawn from the
  * light keeping only the faces turned away from it (gl_shadow.c culls
@@ -59,9 +60,7 @@
 #ifndef DLSHADOW_INC
 #define DLSHADOW_INC
 
-#ifdef OIT_TEX_COUNT
-  #define DLSHADOW_SET3_SLOT	(DLSHADOW_UBO_SLOT + 1)
-#else
+#ifndef DLSHADOW_SET3_SLOT
   #define DLSHADOW_SET3_SLOT	DLSHADOW_UBO_SLOT
 #endif
 #define DLSHADOW_MAX_MAPS	16
