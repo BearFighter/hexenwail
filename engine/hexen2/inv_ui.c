@@ -43,8 +43,6 @@ typedef struct inv_rect_t
 	int		x, y, w, h;
 } inv_rect_t;
 
-static int inv_debug_printed;
-
 void INV_ScreenInit (inv_screen_t *s, client_state_t *client)
 {
 	s->client = client;
@@ -53,7 +51,6 @@ void INV_ScreenInit (inv_screen_t *s, client_state_t *client)
 	s->hover_page = -1;
 	s->hover_slot = -1;
 	s->hover_valid = 0;
-	inv_debug_printed = 0;
 }
 
 void INV_ScreenShutdown (inv_screen_t *s)
@@ -467,43 +464,9 @@ static void Inv_DrawItemSpan (const inv_screen_t *s, inv_rect_t r,
 	Inv_DrawItemArt (s->client, r, aid, acount);
 }
 
-/* Temporary trace for footprint/anchor bugs.  Enabled with +inv_debug 1. */
-static void Inv_DebugDump (const inv_screen_t *s)
-{
-	int li;
-
-	if (inv_debug_printed)
-		return;
-	inv_debug_printed = 1;
-
-	Con_Printf ("INV DEBUG: num_ex_items=%d\n",
-		    s->client ? s->client->num_ex_items : -1);
-	for (li = 0; li < INV_BACKPACK_CELLS; li++)
-	{
-		int page, slot, anchor, w, h;
-		float count, id;
-		char path[MAX_QPATH];
-
-		Inv_CellForLocal (li, &page, &slot);
-		id = Inv_Find (s->client, page, slot, &count);
-		if (id <= 0)
-			continue;
-		anchor = Inv_AnchorForCell (s->client, li);
-		w = 1;
-		h = 1;
-		Inv_SpanForAnchor (s->client, li, &w, &h);
-		path[0] = 0;
-		Inv_ItemInfo (s->client, id, path, sizeof(path), &w, &h);
-		Con_Printf ("INV DEBUG: cell=%d page=%d slot=%d id=%.0f cnt=%.0f anchor=%d path=%s span=%dx%d\n",
-			    li, page, slot, id, count, anchor, path, w, h);
-	}
-}
-
 void INV_ScreenDraw (const inv_screen_t *s)
 {
 	int slot, li;
-
-	Inv_DebugDump (s);
 
 	/* Dark panel over the live world: readable, but the game stays visible. */
 	Inv_FillRect (0, 0, INV_CANVAS_W, INV_CANVAS_H,
