@@ -12,6 +12,7 @@
  */
 
 #include "quakedef.h"
+#include "cvar.h"
 #include "inv_ui.h"
 #include "draw.h"
 #include "menu.h"
@@ -42,6 +43,8 @@ typedef struct inv_rect_t
 	int		x, y, w, h;
 } inv_rect_t;
 
+static int inv_debug_printed;
+
 void INV_ScreenInit (inv_screen_t *s, client_state_t *client)
 {
 	s->client = client;
@@ -50,6 +53,7 @@ void INV_ScreenInit (inv_screen_t *s, client_state_t *client)
 	s->hover_page = -1;
 	s->hover_slot = -1;
 	s->hover_valid = 0;
+	inv_debug_printed = 0;
 }
 
 void INV_ScreenShutdown (inv_screen_t *s)
@@ -159,19 +163,13 @@ static void Inv_ItemInfo (client_state_t *client, float item_id,
 	}
 }
 
-/* Draw one cell of a multi-cell item.  The source icon is split into a grid
- * of span_w x span_h slices and this cell draws its own slice.  Every cell of
- * the footprint therefore draws through the renderer's normal Draw_SubPic
- * path: no hand-built qpic_t, no stretched quad that can disturb later 2D
- * draws, and no second copy of the stack count on covered cells. */
-static void Inv_DrawItemSlice (client_state_t *client, inv_rect_t r,
-			       float item_id, float count,
-			       int span_w, int span_h, int dx, int dy,
-			       int show_count)
+/* Draw the whole item icon into its rectangle.  A multi-cell item is one
+ * picture across the whole footprint, not a stack of unrelated cell icons. */
+static void Inv_DrawItemArt (client_state_t *client, inv_rect_t r,
+			     float item_id, float count)
 {
 	char	path[MAX_QPATH];
 	int	w, h;
-	int	sx, sy, sw, sh;
 	qpic_t	*pic;
 
 	Inv_ItemInfo (client, item_id, path, sizeof(path), &w, &h);
@@ -181,24 +179,12 @@ static void Inv_DrawItemSlice (client_state_t *client, inv_rect_t r,
 	if (!pic || pic->width <= 0 || pic->height <= 0)
 		return;
 
-	if (span_w <= 1 && span_h <= 1)
-	{
+	if (r.w == INV_CELL_ICON && r.h == INV_CELL_ICON)
 		Draw_Pic (r.x, r.y, pic);
-	}
 	else
-	{
-		if (dx < 0 || dx >= span_w || dy < 0 || dy >= span_h)
-			return;
-		sx = dx * pic->width / span_w;
-		sy = dy * pic->height / span_h;
-		sw = (pic->width - sx) / (span_w - dx);
-		sh = (pic->height - sy) / (span_h - dy);
-		if (sw < 1) sw = 1;
-		if (sh < 1) sh = 1;
-		Draw_SubPic (r.x, r.y, pic, sx, sy, sw, sh);
-	}
+		Draw_PicStretch (r.x, r.y, r.w, r.h, pic);
 
-	if (show_count && count > 1)
+	if (count > 1)
 	{
 		char buf[16];
 		int val = (int)count;
@@ -400,37 +386,31 @@ static void Inv_DrawCellFrame (inv_rect_t r, int selected, int hovered)
 	}
 }
 
-/* Draw one cell of the grid.  Frames always draw, including cells covered by
- * a multi-cell item, so the rows stay intact.  Selection/hover are resolved
- * to the item's anchor first, making the whole footprint highlight. */
+/* One continuous border around a whole footprint.  Backpack cells only get
+ * plain frames here; selection and hover are drawn once per item in pass 2 so
+ * a 3x2 item cannot show six independent "selected" cells. */
+static void Inv_DrawSpanBorder (inv_rect_t r, int selected, int hovered)
+{
+	float cr = hovered ? 0.95f : 0.35f;
+	float cg = hovered ? 0.85f : 0.70f;
+	float cb = hovered ? 0.35f : 1.00f;
+	float ca = 1.0f;
+
+	Inv_FillRect (r.x - 2, r.y - 2, r.w + 4, 1, cr, cg, cb, ca);
+	Inv_FillRect (r.x - 2, r.y + r.h + 1, r.w + 4, 1, cr, cg, cb, ca);
+	Inv_FillRect (r.x - 2, r.y - 2, 1, r.h + 4, cr, cg, cb, ca);
+	Inv_FillRect (r.x + r.w + 1, r.y - 2, 1, r.h + 4, cr, cg, cb, ca);
+}
+
+/* Draw one cell of the grid.  Equipment cells keep their own highlight;
+ * backpack cells stay neutral so item art draws over one clean grid. */
 static void Inv_DrawCell (const inv_screen_t *s, inv_rect_t r,
 			  int page, int slot)
 {
 	int li = Inv_LocalForCell (page, slot);
-	int anchor = -1;
-	int sel_anchor = Inv_SelectionAnchor (s);
-	int hov_anchor = Inv_HoverAnchor (s);
-	int selected, hovered;
+	int selected = 0, hovered = 0;
 
-	if (li >= 0)
-		anchor = Inv_AnchorForCell (s->client, li);
-
-	if (li >= 0)
-	{
-		if (anchor >= 0)
-		{
-			selected = (sel_anchor == anchor);
-			hovered = (hov_anchor == anchor);
-		}
-		else
-		{
-			selected = (sel_anchor < 0 && s->page == page &&
-				    s->slot == slot);
-			hovered = (hov_anchor < 0 && s->hover_valid &&
-				   s->hover_page == page && s->hover_slot == slot);
-		}
-	}
-	else
+	if (li < 0)
 	{
 		selected = (s->page == page && s->slot == slot);
 		hovered = (s->hover_valid && s->hover_page == page &&
@@ -440,9 +420,9 @@ static void Inv_DrawCell (const inv_screen_t *s, inv_rect_t r,
 	Inv_DrawCellFrame (r, selected, hovered);
 }
 
-/* Draw an item from its anchor cell across every cell of its footprint.
- * Covered-cell markers are only needed for hit-testing; art never depends on
- * them arriving, so a missing marker cannot leave half an icon missing. */
+/* Draw an item once, from its anchor, as one picture across its footprint.
+ * Selection and hover are one border around that whole picture.  Covered-cell
+ * markers only matter for hit-testing, never for art. */
 static void Inv_DrawItemSpan (const inv_screen_t *s, inv_rect_t r,
 			      int page, int slot)
 {
@@ -452,7 +432,6 @@ static void Inv_DrawItemSpan (const inv_screen_t *s, inv_rect_t r,
 	int anchor, w = 1, h = 1;
 	int apage, aslot, aid;
 	float acount = 0;
-	int acol, arow, dy, dx, nli;
 
 	if (id <= 0)
 		return;
@@ -460,7 +439,7 @@ static void Inv_DrawItemSpan (const inv_screen_t *s, inv_rect_t r,
 	if (li < 0)
 	{
 		/* Equipment row: one full icon, no footprint. */
-		Inv_DrawItemSlice (s->client, r, id, count, 1, 1, 0, 0, 1);
+		Inv_DrawItemArt (s->client, r, id, count);
 		return;
 	}
 
@@ -474,30 +453,57 @@ static void Inv_DrawItemSpan (const inv_screen_t *s, inv_rect_t r,
 		return;
 
 	Inv_SpanForAnchor (s->client, anchor, &w, &h);
-	acol = anchor % INV_GRID_COLS;
-	arow = anchor / INV_GRID_COLS;
+	r.w = INV_CELL_ICON + (w - 1) * INV_GRID_PITCH;
+	r.h = INV_CELL_ICON + (h - 1) * INV_GRID_PITCH;
 
-	dy = 0;
-	while (dy < h)
 	{
-		dx = 0;
-		while (dx < w)
-		{
-			nli = (arow + dy) * INV_GRID_COLS + acol + dx;
-			if (nli >= 0 && nli < INV_BACKPACK_CELLS)
-				Inv_DrawItemSlice (s->client,
-						   Inv_BackpackRect (nli),
-						   aid, acount, w, h, dx, dy,
-						   dx == 0 && dy == 0);
-			dx++;
-		}
-		dy++;
+		int sel_anchor = Inv_SelectionAnchor (s);
+		int hov_anchor = Inv_HoverAnchor (s);
+		if (sel_anchor == anchor || hov_anchor == anchor)
+			Inv_DrawSpanBorder (r, sel_anchor == anchor,
+					    hov_anchor == anchor);
+	}
+
+	Inv_DrawItemArt (s->client, r, aid, acount);
+}
+
+/* Temporary trace for footprint/anchor bugs.  Enabled with +inv_debug 1. */
+static void Inv_DebugDump (const inv_screen_t *s)
+{
+	int li;
+
+	if (inv_debug_printed)
+		return;
+	inv_debug_printed = 1;
+
+	Con_Printf ("INV DEBUG: num_ex_items=%d\n",
+		    s->client ? s->client->num_ex_items : -1);
+	for (li = 0; li < INV_BACKPACK_CELLS; li++)
+	{
+		int page, slot, anchor, w, h;
+		float count, id;
+		char path[MAX_QPATH];
+
+		Inv_CellForLocal (li, &page, &slot);
+		id = Inv_Find (s->client, page, slot, &count);
+		if (id <= 0)
+			continue;
+		anchor = Inv_AnchorForCell (s->client, li);
+		w = 1;
+		h = 1;
+		Inv_SpanForAnchor (s->client, li, &w, &h);
+		path[0] = 0;
+		Inv_ItemInfo (s->client, id, path, sizeof(path), &w, &h);
+		Con_Printf ("INV DEBUG: cell=%d page=%d slot=%d id=%.0f cnt=%.0f anchor=%d path=%s span=%dx%d\n",
+			    li, page, slot, id, count, anchor, path, w, h);
 	}
 }
 
 void INV_ScreenDraw (const inv_screen_t *s)
 {
 	int slot, li;
+
+	Inv_DebugDump (s);
 
 	/* Dark panel over the live world: readable, but the game stays visible. */
 	Inv_FillRect (0, 0, INV_CANVAS_W, INV_CANVAS_H,

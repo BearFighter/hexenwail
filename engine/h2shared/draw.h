@@ -43,6 +43,7 @@ qpic_t *Draw_CacheLoadingPic (void);	/* without the progress bars. */
 #endif	/* DRAW_PROGRESSBARS */
 
 void Draw_Pic (int x, int y, qpic_t *pic);
+void Draw_PicStretch (int x, int y, int w, int h, qpic_t *pic);
 void Draw_PicCropped (int x, int y, qpic_t *pic);
 void Draw_SubPic (int x, int y, qpic_t *pic, int srcx, int srcy, int width, int height);
 void Draw_SubPicCropped (int x, int y, int h, qpic_t *pic);
