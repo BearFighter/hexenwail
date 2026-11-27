@@ -21,7 +21,7 @@
 /* Screen geometry in CANVAS_MENU units (320x200). */
 #define	INV_CANVAS_W		320
 #define	INV_CANVAS_H		200
-#define	INV_TITLE_X		132
+#define	INV_TITLE_X		240
 #define	INV_TITLE_Y		4
 #define	INV_TIP_X		8
 #define	INV_TIP_Y		42
@@ -91,18 +91,20 @@ static float Inv_Find (client_state_t *client, int page, int slot, float *count)
 	return p->item_id[slot];
 }
 
-/* Item registry strings are "gfx/artiNN.lmp" for a 1x1 item and
- * "gfx/artiNN.lmp#WxH" for one with a larger footprint.  The suffix rides
- * along the existing ex-item registration, so no protocol field is added. */
+/* Item registry strings are "path.lmp[#WxH][#Display Name]".  Both suffixes
+ * ride along the existing ex-item registration, so no protocol field is added.
+ * Sbar_ItemIconPath already strips everything from the first '#'. */
 static void Inv_ParseIconString (const char *src, char *path, int size,
-				 int *w, int *h)
+				 int *w, int *h, char *name, int name_size)
 {
 	int n = 0;
 	const char *p;
-	int tw = 0, th = 0;
+	int tw = 0, th = 0, digits = 0;
 
 	*w = 1;
 	*h = 1;
+	if (name)
+		name[0] = 0;
 	if (!src)
 	{
 		path[0] = 0;
@@ -114,39 +116,61 @@ static void Inv_ParseIconString (const char *src, char *path, int size,
 		n++;
 	}
 	path[n] = 0;
-	if (src[n] != '#')
-		return;
 
-	p = src + n + 1;
+	p = src + n;
+	if (*p != '#')
+		return;
+	p++;
+	digits = 0;
 	while (*p >= '0' && *p <= '9')
 	{
 		tw = tw * 10 + (*p - '0');
 		p++;
+		digits++;
 	}
-	if (*p != 'x')
-		return;
-	p++;
-	while (*p >= '0' && *p <= '9')
+	if (digits && *p == 'x')
 	{
-		th = th * 10 + (*p - '0');
 		p++;
+		digits = 0;
+		while (*p >= '0' && *p <= '9')
+		{
+			th = th * 10 + (*p - '0');
+			p++;
+			digits++;
+		}
+		if (digits && tw >= 1 && th >= 1 && (!*p || *p == '#'))
+		{
+			*w = tw > INV_GRID_COLS ? INV_GRID_COLS : tw;
+			*h = th > INV_GRID_ROWS ? INV_GRID_ROWS : th;
+			if (*p == '#')
+				p++;
+		}
 	}
-	if (*p || tw < 1 || th < 1)
-		return;
-
-	*w = tw > INV_GRID_COLS ? INV_GRID_COLS : tw;
-	*h = th > INV_GRID_ROWS ? INV_GRID_ROWS : th;
+	if (name && *p)
+	{
+		n = 0;
+		while (*p && n + 1 < name_size)
+		{
+			name[n] = *p;
+			p++;
+			n++;
+		}
+		name[n] = 0;
+	}
 }
 
-/* Item id -> icon path and footprint through the client's ex item list. */
+/* Item id -> icon path, footprint and display name through the ex item list. */
 static void Inv_ItemInfo (client_state_t *client, float item_id,
-			  char *path, int size, int *w, int *h)
+			  char *path, int size, int *w, int *h,
+			  char *name, int name_size)
 {
 	int i;
 
 	path[0] = 0;
 	*w = 1;
 	*h = 1;
+	if (name)
+		name[0] = 0;
 	if (!client)
 		return;
 	for (i = 0; i < client->num_ex_items; i++)
@@ -154,7 +178,7 @@ static void Inv_ItemInfo (client_state_t *client, float item_id,
 		if (client->ex_items[i].id == (int)item_id)
 		{
 			Inv_ParseIconString (client->ex_items[i].icon,
-					     path, size, w, h);
+					     path, size, w, h, name, name_size);
 			return;
 		}
 	}
@@ -166,10 +190,13 @@ static void Inv_DrawItemArt (client_state_t *client, inv_rect_t r,
 			     float item_id, float count)
 {
 	char	path[MAX_QPATH];
+	char	name[64];
 	int	w, h;
 	qpic_t	*pic;
 
-	Inv_ItemInfo (client, item_id, path, sizeof(path), &w, &h);
+	Inv_ItemInfo (client, item_id, path, sizeof(path), &w, &h,
+		      name, sizeof(name));
+	(void)name;
 	if (!path[0])
 		return;
 	pic = Draw_CachePic (path);
@@ -240,6 +267,7 @@ static void Inv_SpanForAnchor (client_state_t *client, int anchor,
 	float count;
 	float id;
 	char path[MAX_QPATH];
+	char name[64];
 
 	*w = 1;
 	*h = 1;
@@ -251,7 +279,9 @@ static void Inv_SpanForAnchor (client_state_t *client, int anchor,
 	if (id <= 0 || (int)id == INV_OCCUPIED_ID)
 		return;
 
-	Inv_ItemInfo (client, id, path, sizeof(path), w, h);
+	Inv_ItemInfo (client, id, path, sizeof(path), w, h,
+		      name, sizeof(name));
+	(void)name;
 	col = anchor % INV_GRID_COLS;
 	row = anchor / INV_GRID_COLS;
 	if (col + *w > INV_GRID_COLS)
@@ -329,6 +359,32 @@ static int Inv_HoverAnchor (const inv_screen_t *s)
 		return -1;
 	li = Inv_LocalForCell (s->hover_page, s->hover_slot);
 	return li >= 0 ? Inv_AnchorForCell (s->client, li) : -1;
+}
+
+/* The hovered item wins; otherwise show the selected item's registry name. */
+static void Inv_ItemNameForScreen (const inv_screen_t *s,
+				   char *name, int name_size)
+{
+	int page = s->page, slot = s->slot;
+	char path[MAX_QPATH];
+	float count;
+	float id;
+	int w, h;
+
+	name[0] = 0;
+	if (s->hover_valid)
+	{
+		page = s->hover_page;
+		slot = s->hover_slot;
+	}
+	id = Inv_Find (s->client, page, slot, &count);
+	if (id <= 0)
+		return;
+	Inv_ItemInfo (s->client, id, path, sizeof(path), &w, &h,
+		      name, name_size);
+	(void)path;
+	(void)w;
+	(void)h;
 }
 
 static inv_rect_t Inv_EquipmentRect (int slot)
@@ -496,6 +552,18 @@ void INV_ScreenDraw (const inv_screen_t *s)
 		int page, slot2;
 		Inv_CellForLocal (li, &page, &slot2);
 		Inv_DrawItemSpan (s, Inv_BackpackRect (li), page, slot2);
+	}
+
+	/* One-line item name, from the same registry string as the icon. */
+	{
+		char name[64];
+		Inv_ItemNameForScreen (s, name, sizeof(name));
+		if (name[0])
+		{
+			Inv_FillRect (4, 2, 232, 12,
+				      0.02f, 0.025f, 0.02f, 0.85f);
+			M_Print (6, 4, name);
+		}
 	}
 }
 

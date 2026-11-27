@@ -973,12 +973,25 @@ void IN_ReactivateMouse (void)
 	IN_ActivateMouse ();
 }
 
+/* SDL cursor visibility is global and sticky: VID_SetMode() hides it at
+ * startup and on every vid_restart, and relative mode hides it again.  Keep
+ * it tied to key_menu rather than IN_MenuOwnsPointer(), so the menu pointer
+ * is visible even when ui_mouse is off and hover input is intentionally dead. */
+static void IN_SyncCursorVisibility (void)
+{
+	if (Key_GetDest () & key_menu)
+		IN_ShowMouse ();
+	else
+		IN_HideMouse ();
+}
+
 void IN_MenuPointerFollowDest (void)
 {
 	if (IN_MenuOwnsPointer ())
 		IN_DeactivateMouse ();
 	else
 		IN_ActivateMouse ();
+	IN_SyncCursorVisibility ();
 }
 
 static void IN_StartupMouse (void)
@@ -986,6 +999,7 @@ static void IN_StartupMouse (void)
 	if (safemode || COM_CheckParm ("-nomouse"))
 	{
 		SDL_SetWindowRelativeMouseMode(VID_GetWindow(), false);
+		IN_SyncCursorVisibility ();
 		return;
 	}
 
@@ -1001,6 +1015,7 @@ static void IN_StartupMouse (void)
 		SDL_SetWindowRelativeMouseMode(VID_GetWindow(), true);
 		SDL_GetRelativeMouseState (NULL, NULL);
 	}
+	IN_SyncCursorVisibility ();
 }
 
 void IN_ClearStates (void)
@@ -1552,6 +1567,10 @@ void IN_SendKeyEvents (void)
 	qboolean state;
 	SDL_Keymod modstate;
 	qboolean gamekey;
+
+	/* Idempotent here: heals a direct SDL relative-mode toggle (Ctrl+G)
+	 * after the menu has closed or reopened. */
+	IN_SyncCursorVisibility ();
 
 	gamekey = Key_IsGameKey();
 	if (gamekey != prev_gamekey)
