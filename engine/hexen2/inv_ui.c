@@ -440,9 +440,9 @@ static void Inv_DrawCell (const inv_screen_t *s, inv_rect_t r,
 	Inv_DrawCellFrame (r, selected, hovered);
 }
 
-/* Draw this cell's slice of the item that owns it.  Equipment cells have no
- * footprint; backpack cells resolve to their anchor, including covered cells
- * whose stored id is ITEM_OCCUPIED_ID. */
+/* Draw an item from its anchor cell across every cell of its footprint.
+ * Covered-cell markers are only needed for hit-testing; art never depends on
+ * them arriving, so a missing marker cannot leave half an icon missing. */
 static void Inv_DrawItemSpan (const inv_screen_t *s, inv_rect_t r,
 			      int page, int slot)
 {
@@ -452,7 +452,7 @@ static void Inv_DrawItemSpan (const inv_screen_t *s, inv_rect_t r,
 	int anchor, w = 1, h = 1;
 	int apage, aslot, aid;
 	float acount = 0;
-	int acol, arow, col, row, dx, dy;
+	int acol, arow, dy, dx, nli;
 
 	if (id <= 0)
 		return;
@@ -465,7 +465,7 @@ static void Inv_DrawItemSpan (const inv_screen_t *s, inv_rect_t r,
 	}
 
 	anchor = Inv_AnchorForCell (s->client, li);
-	if (anchor < 0)
+	if (anchor < 0 || anchor != li)
 		return;
 
 	Inv_CellForLocal (anchor, &apage, &aslot);
@@ -476,15 +476,23 @@ static void Inv_DrawItemSpan (const inv_screen_t *s, inv_rect_t r,
 	Inv_SpanForAnchor (s->client, anchor, &w, &h);
 	acol = anchor % INV_GRID_COLS;
 	arow = anchor / INV_GRID_COLS;
-	col = li % INV_GRID_COLS;
-	row = li / INV_GRID_COLS;
-	dx = col - acol;
-	dy = row - arow;
-	if (dx < 0 || dx >= w || dy < 0 || dy >= h)
-		return;
 
-	Inv_DrawItemSlice (s->client, r, aid, acount, w, h, dx, dy,
-			   anchor == li);
+	dy = 0;
+	while (dy < h)
+	{
+		dx = 0;
+		while (dx < w)
+		{
+			nli = (arow + dy) * INV_GRID_COLS + acol + dx;
+			if (nli >= 0 && nli < INV_BACKPACK_CELLS)
+				Inv_DrawItemSlice (s->client,
+						   Inv_BackpackRect (nli),
+						   aid, acount, w, h, dx, dy,
+						   dx == 0 && dy == 0);
+			dx++;
+		}
+		dy++;
+	}
 }
 
 void INV_ScreenDraw (const inv_screen_t *s)
