@@ -36,6 +36,8 @@
 #define	INV_CELL_ICON	20
 #define	INV_BACKPACK_CELLS	(INV_GRID_COLS * INV_GRID_ROWS)
 #define	INV_OCCUPIED_ID		255	/* covered cell of a multi-cell item */
+#define	INV_FOOTPRINT_BASE	90	/* anchor count = 90 + w*8 + h */
+#define	INV_FOOTPRINT_STRIDE	8
 
 typedef struct inv_rect_t
 {
@@ -135,7 +137,7 @@ static void Inv_DrawItem (client_state_t *client, inv_rect_t r,
 	Draw_SubPic (r.x + (r.w - iw) / 2, r.y + (r.h - ih) / 2,
 		     pic, 0, 0, iw, ih);
 
-	if (count > 1)
+	if (count > 1 && count < INV_FOOTPRINT_BASE)
 	{
 		char buf[16];
 		int val = (int)count;
@@ -184,41 +186,60 @@ static int Inv_LocalForCell (int page, int slot)
 	return -1;
 }
 
-/* Derive the visual footprint from the occupied-marker cells.  The anchor is
- * always drawn first, so the client does not need a second size registry. */
+/* The anchor's count carries its footprint (64 + w*8 + h).  Reading it here
+ * keeps the UI correct even when a covered-cell marker is missing on the wire. */
 static void Inv_SpanForAnchor (client_state_t *client, int anchor,
 			       int *w, int *h)
 {
-	int i, arow, acol, minrow, maxrow, mincol, maxcol;
+	int page, slot, encoded;
+	float count;
 
 	*w = 1;
 	*h = 1;
 	if (anchor < 0 || anchor >= INV_BACKPACK_CELLS)
 		return;
 
-	arow = anchor / INV_GRID_COLS;
-	acol = anchor % INV_GRID_COLS;
-	minrow = maxrow = arow;
-	mincol = maxcol = acol;
+	Inv_CellForLocal (anchor, &page, &slot);
+	if (Inv_Find (client, page, slot, &count) <= 0 ||
+	    count < INV_FOOTPRINT_BASE)
+		return;
+
+	encoded = (int)count - INV_FOOTPRINT_BASE;
+	*w = encoded / INV_FOOTPRINT_STRIDE;
+	*h = encoded % INV_FOOTPRINT_STRIDE;
+	if (*w < 1) *w = 1;
+	if (*w > INV_GRID_COLS) *w = INV_GRID_COLS;
+	if (*h < 1) *h = 1;
+	if (*h > INV_GRID_ROWS) *h = INV_GRID_ROWS;
+}
+
+/* Resolve a covered cell to the anchor whose footprint contains it. */
+static int Inv_AnchorForCell (client_state_t *client, int li)
+{
+	int i, arow, acol, row, col, w, h;
+
+	if (li < 0 || li >= INV_BACKPACK_CELLS)
+		return -1;
+
+	row = li / INV_GRID_COLS;
+	col = li % INV_GRID_COLS;
 
 	for (i = 0; i < INV_BACKPACK_CELLS; i++)
 	{
-		int page, slot, row, col;
+		int page, slot;
 		float count;
 		Inv_CellForLocal (i, &page, &slot);
-		if ((int)Inv_Find (client, page, slot, &count) != INV_OCCUPIED_ID ||
-		    (int)count != anchor)
+		if (Inv_Find (client, page, slot, &count) <= 0 ||
+		    count < INV_FOOTPRINT_BASE)
 			continue;
-		row = i / INV_GRID_COLS;
-		col = i % INV_GRID_COLS;
-		if (row < minrow) minrow = row;
-		if (row > maxrow) maxrow = row;
-		if (col < mincol) mincol = col;
-		if (col > maxcol) maxcol = col;
+		Inv_SpanForAnchor (client, i, &w, &h);
+		arow = i / INV_GRID_COLS;
+		acol = i % INV_GRID_COLS;
+		if (row >= arow && row < arow + h &&
+		    col >= acol && col < acol + w)
+			return i;
 	}
-
-	*w = maxcol - mincol + 1;
-	*h = maxrow - minrow + 1;
+	return -1;
 }
 
 /* True when the selected or hovered cell sits inside this item's footprint. */
@@ -310,10 +331,13 @@ static void Inv_DrawCell (const inv_screen_t *s, inv_rect_t r,
 	float count = 0;
 	float id = Inv_Find (s->client, page, slot, &count);
 	int li = Inv_LocalForCell (page, slot);
-	int w, h;
+	int w, h, anchor;
 
 	/* Covered cells are drawn as part of their anchor's rectangle. */
 	if ((int)id == INV_OCCUPIED_ID)
+		return;
+	anchor = Inv_AnchorForCell (s->client, li);
+	if (anchor >= 0 && anchor != li)
 		return;
 
 	Inv_SpanForAnchor (s->client, li, &w, &h);
@@ -385,9 +409,18 @@ static int Inv_CellAt (const inv_screen_t *s, int vx, int vy,
 
 int INV_ScreenClick (inv_screen_t *s, int vx, int vy)
 {
-	int page, slot;
+	int page, slot, li, anchor;
 	if (!Inv_CellAt (s, vx, vy, &page, &slot))
 		return 0;
+
+	/* Clicking any cell of a multi-cell item selects the item's anchor. */
+	li = Inv_LocalForCell (page, slot);
+	anchor = Inv_AnchorForCell (s->client, li);
+	if (anchor >= 0)
+	{
+		Inv_CellForLocal (anchor, &page, &slot);
+	}
+
 	s->page = page;
 	s->slot = slot;
 	s->hover_page = page;
@@ -398,9 +431,13 @@ int INV_ScreenClick (inv_screen_t *s, int vx, int vy)
 
 void INV_ScreenHover (inv_screen_t *s, int vx, int vy)
 {
-	int page, slot;
+	int page, slot, li, anchor;
 	if (Inv_CellAt (s, vx, vy, &page, &slot))
 	{
+		li = Inv_LocalForCell (page, slot);
+		anchor = Inv_AnchorForCell (s->client, li);
+		if (anchor >= 0)
+			Inv_CellForLocal (anchor, &page, &slot);
 		s->hover_page = page;
 		s->hover_slot = slot;
 		s->hover_valid = 1;
