@@ -159,11 +159,19 @@ static void Inv_ItemInfo (client_state_t *client, float item_id,
 	}
 }
 
-static void Inv_DrawItem (client_state_t *client, inv_rect_t r,
-			  float item_id, float count)
+/* Draw one cell of a multi-cell item.  The source icon is split into a grid
+ * of span_w x span_h slices and this cell draws its own slice.  Every cell of
+ * the footprint therefore draws through the renderer's normal Draw_SubPic
+ * path: no hand-built qpic_t, no stretched quad that can disturb later 2D
+ * draws, and no second copy of the stack count on covered cells. */
+static void Inv_DrawItemSlice (client_state_t *client, inv_rect_t r,
+			       float item_id, float count,
+			       int span_w, int span_h, int dx, int dy,
+			       int show_count)
 {
 	char	path[MAX_QPATH];
 	int	w, h;
+	int	sx, sy, sw, sh;
 	qpic_t	*pic;
 
 	Inv_ItemInfo (client, item_id, path, sizeof(path), &w, &h);
@@ -173,11 +181,24 @@ static void Inv_DrawItem (client_state_t *client, inv_rect_t r,
 	if (!pic || pic->width <= 0 || pic->height <= 0)
 		return;
 
-	/* The whole icon fills its footprint.  Draw_PicStretch keeps the GL and
-	 * software paths identical and never builds a fake qpic_t by hand. */
-	Draw_PicStretch (r.x, r.y, r.w, r.h, pic);
+	if (span_w <= 1 && span_h <= 1)
+	{
+		Draw_Pic (r.x, r.y, pic);
+	}
+	else
+	{
+		if (dx < 0 || dx >= span_w || dy < 0 || dy >= span_h)
+			return;
+		sx = dx * pic->width / span_w;
+		sy = dy * pic->height / span_h;
+		sw = (pic->width - sx) / (span_w - dx);
+		sh = (pic->height - sy) / (span_h - dy);
+		if (sw < 1) sw = 1;
+		if (sh < 1) sh = 1;
+		Draw_SubPic (r.x, r.y, pic, sx, sy, sw, sh);
+	}
 
-	if (count > 1)
+	if (show_count && count > 1)
 	{
 		char buf[16];
 		int val = (int)count;
@@ -419,7 +440,9 @@ static void Inv_DrawCell (const inv_screen_t *s, inv_rect_t r,
 	Inv_DrawCellFrame (r, selected, hovered);
 }
 
-/* Draw an item over its whole footprint, once, from its anchor cell. */
+/* Draw this cell's slice of the item that owns it.  Equipment cells have no
+ * footprint; backpack cells resolve to their anchor, including covered cells
+ * whose stored id is ITEM_OCCUPIED_ID. */
 static void Inv_DrawItemSpan (const inv_screen_t *s, inv_rect_t r,
 			      int page, int slot)
 {
@@ -427,20 +450,41 @@ static void Inv_DrawItemSpan (const inv_screen_t *s, inv_rect_t r,
 	float id = Inv_Find (s->client, page, slot, &count);
 	int li = Inv_LocalForCell (page, slot);
 	int anchor, w = 1, h = 1;
+	int apage, aslot, aid;
+	float acount = 0;
+	int acol, arow, col, row, dx, dy;
 
 	if (id <= 0)
 		return;
-	if (li >= 0)
+
+	if (li < 0)
 	{
-		anchor = Inv_AnchorForCell (s->client, li);
-		if (anchor >= 0 && anchor != li)
-			return;
-		Inv_SpanForAnchor (s->client, li, &w, &h);
+		/* Equipment row: one full icon, no footprint. */
+		Inv_DrawItemSlice (s->client, r, id, count, 1, 1, 0, 0, 1);
+		return;
 	}
 
-	r.w = INV_CELL_ICON + (w - 1) * INV_GRID_PITCH;
-	r.h = INV_CELL_ICON + (h - 1) * INV_GRID_PITCH;
-	Inv_DrawItem (s->client, r, id, count);
+	anchor = Inv_AnchorForCell (s->client, li);
+	if (anchor < 0)
+		return;
+
+	Inv_CellForLocal (anchor, &apage, &aslot);
+	aid = Inv_Find (s->client, apage, aslot, &acount);
+	if (aid <= 0 || (int)aid == INV_OCCUPIED_ID)
+		return;
+
+	Inv_SpanForAnchor (s->client, anchor, &w, &h);
+	acol = anchor % INV_GRID_COLS;
+	arow = anchor / INV_GRID_COLS;
+	col = li % INV_GRID_COLS;
+	row = li / INV_GRID_COLS;
+	dx = col - acol;
+	dy = row - arow;
+	if (dx < 0 || dx >= w || dy < 0 || dy >= h)
+		return;
+
+	Inv_DrawItemSlice (s->client, r, aid, acount, w, h, dx, dy,
+			   anchor == li);
 }
 
 void INV_ScreenDraw (const inv_screen_t *s)

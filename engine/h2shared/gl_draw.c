@@ -1587,39 +1587,6 @@ void Draw_Pic (int x, int y, qpic_t *pic)
 	R_TexSetWrap(GL_TEXTURE_2D, gl->texnum, GL_REPEAT);
 }
 
-/* Draw the whole pic into an arbitrary rectangle.  Unlike Draw_SubPic the
- * destination size is independent of the source size, so an item registered
- * as 3x1 can use its full icon art across three cells.  The software path
- * implements the same entry point. */
-void Draw_PicStretch (int x, int y, int w, int h, qpic_t *pic)
-{
-	glpic_t	*gl;
-
-	if (!pic || pic->width <= 0 || pic->height <= 0 || w <= 0 || h <= 0)
-		return;
-
-	Draw_FlushCharBatch ();
-	gl = (glpic_t *)pic->data;
-	R_BindTextureSlot (0, gl->texnum);
-	R_TexSetWrap (GL_TEXTURE_2D, gl->texnum, GL_CLAMP_TO_EDGE);
-
-	GL_ImmBegin();
-	GL_ImmColor4f (1, 1, 1, pic_alpha);
-	GL_ImmTexCoord2f (gl->sl, gl->tl);
-	GL_ImmVertex2f (x, y);
-	GL_ImmTexCoord2f (gl->sh, gl->tl);
-	GL_ImmVertex2f (x + w, y);
-	GL_ImmTexCoord2f (gl->sh, gl->th);
-	GL_ImmVertex2f (x + w, y + h);
-	GL_ImmTexCoord2f (gl->sl, gl->th);
-	GL_ImmVertex2f (x, y + h);
-	Draw_PicAlphaBegin ();
-	GL_ImmEnd (GL_QUADS, &gl_shader_2d);
-	Draw_PicAlphaEnd ();
-
-	R_TexSetWrap (GL_TEXTURE_2D, gl->texnum, GL_REPEAT);
-}
-
 /*
 =============
 Draw_AlphaPic
