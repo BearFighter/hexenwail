@@ -116,12 +116,46 @@ static void Inv_ItemIcon (client_state_t *client, float item_id, char *path, int
 	}
 }
 
+/* A scaled copy of the icon, so a 3x1 sword fills three cells lengthwise.
+ * Draw_CachePicResize keys its cache by path alone and would thrash between
+ * sizes in one frame, so scale into our own buffer instead. */
+typedef struct inv_scaled_pic_s
+{
+	qpic_t	pic;
+	byte	data[128 * 64];
+} inv_scaled_pic_t;
+
+static inv_scaled_pic_t inv_scaled_pic;
+
+static qpic_t *Inv_ScaledPic (qpic_t *src, int w, int h)
+{
+	int x, y;
+
+	if (!src || src->width <= 0 || src->height <= 0)
+		return NULL;
+	if (w < 1 || h < 1 || w > 128 || h > 64)
+		return NULL;
+
+	inv_scaled_pic.pic.width = w;
+	inv_scaled_pic.pic.height = h;
+	for (y = 0; y < h; y++)
+	{
+		int sy = y * src->height / h;
+		for (x = 0; x < w; x++)
+		{
+			int sx = x * src->width / w;
+			inv_scaled_pic.pic.data[y * w + x] =
+				src->data[sy * src->width + sx];
+		}
+	}
+	return &inv_scaled_pic.pic;
+}
+
 static void Inv_DrawItem (client_state_t *client, inv_rect_t r,
 			  float item_id, float count)
 {
 	char	path[MAX_QPATH];
-	qpic_t	*pic;
-	int	iw, ih;
+	qpic_t	*pic, *scaled;
 
 	path[0] = 0;
 	if (item_id > 0)
@@ -132,10 +166,11 @@ static void Inv_DrawItem (client_state_t *client, inv_rect_t r,
 	if (!pic || pic->width <= 0 || pic->height <= 0)
 		return;
 
-	iw = pic->width < r.w ? pic->width : r.w;
-	ih = pic->height < r.h ? pic->height : r.h;
-	Draw_SubPic (r.x + (r.w - iw) / 2, r.y + (r.h - ih) / 2,
-		     pic, 0, 0, iw, ih);
+	scaled = Inv_ScaledPic (pic, r.w, r.h);
+	if (scaled)
+		Draw_Pic (r.x, r.y, scaled);
+	else
+		Draw_SubPic (r.x, r.y, pic, 0, 0, r.w, r.h);
 
 	if (count > 1 && count < INV_FOOTPRINT_BASE)
 	{
@@ -325,24 +360,16 @@ static void Inv_DrawCellFrame (inv_rect_t r, int selected, int hovered)
 	}
 }
 
+/* Draw one cell of the grid.  Frames always draw, including cells covered by
+ * a multi-cell item, so the rows stay intact. */
 static void Inv_DrawCell (const inv_screen_t *s, inv_rect_t r,
 			  int page, int slot)
 {
-	float count = 0;
-	float id = Inv_Find (s->client, page, slot, &count);
 	int li = Inv_LocalForCell (page, slot);
-	int w, h, anchor;
+	int w = 1, h = 1;
 
-	/* Covered cells are drawn as part of their anchor's rectangle. */
-	if ((int)id == INV_OCCUPIED_ID)
-		return;
-	anchor = Inv_AnchorForCell (s->client, li);
-	if (anchor >= 0 && anchor != li)
-		return;
-
-	Inv_SpanForAnchor (s->client, li, &w, &h);
-	r.w = INV_CELL_ICON + (w - 1) * INV_GRID_PITCH;
-	r.h = INV_CELL_ICON + (h - 1) * INV_GRID_PITCH;
+	if (li >= 0)
+		Inv_SpanForAnchor (s->client, li, &w, &h);
 
 	Inv_DrawCellFrame (r,
 			   li >= 0 ? Inv_SelectionInSpan (s, li, w, h) :
@@ -350,8 +377,36 @@ static void Inv_DrawCell (const inv_screen_t *s, inv_rect_t r,
 			   li >= 0 ? Inv_HoverInSpan (s, li, w, h) :
 				     (s->hover_valid && s->hover_page == page &&
 				      s->hover_slot == slot));
-	if (id > 0)
-		Inv_DrawItem (s->client, r, id, count);
+}
+
+/* Draw an item over its whole footprint, once, from its anchor cell. */
+static void Inv_DrawItemSpan (const inv_screen_t *s, inv_rect_t r,
+			      int page, int slot)
+{
+	float count = 0;
+	float id = Inv_Find (s->client, page, slot, &count);
+	int li = Inv_LocalForCell (page, slot);
+	int anchor, w = 1, h = 1;
+
+	if (id <= 0)
+		return;
+	if (li >= 0)
+	{
+		anchor = Inv_AnchorForCell (s->client, li);
+		if (anchor >= 0 && anchor != li)
+			return;
+		Inv_SpanForAnchor (s->client, li, &w, &h);
+	}
+	else
+	{
+		/* Equipment cells have no footprint. */
+		w = 1;
+		h = 1;
+	}
+
+	r.w = INV_CELL_ICON + (w - 1) * INV_GRID_PITCH;
+	r.h = INV_CELL_ICON + (h - 1) * INV_GRID_PITCH;
+	Inv_DrawItem (s->client, r, id, count);
 }
 
 void INV_ScreenDraw (const inv_screen_t *s)
@@ -368,16 +423,24 @@ void INV_ScreenDraw (const inv_screen_t *s)
 	M_Print (INV_TIP_X, INV_TIP_Y,
 		 "LMB sel RMB use E equip D drop TAB exit");
 
-	/* Equipment: page 0 slots 0-12, ascending. */
+	/* Pass 1: the grid, so every row stays visible under large items. */
 	for (slot = 0; slot < INV_SCREEN_EQUIP_SLOTS; slot++)
 		Inv_DrawCell (s, Inv_EquipmentRect (slot), 0, slot);
-
-	/* Backpack: the 60 cells. */
 	for (li = 0; li < INV_BACKPACK_CELLS; li++)
 	{
 		int page, slot2;
 		Inv_CellForLocal (li, &page, &slot2);
 		Inv_DrawCell (s, Inv_BackpackRect (li), page, slot2);
+	}
+
+	/* Pass 2: item art over its full footprint, drawn from the anchor. */
+	for (slot = 0; slot < INV_SCREEN_EQUIP_SLOTS; slot++)
+		Inv_DrawItemSpan (s, Inv_EquipmentRect (slot), 0, slot);
+	for (li = 0; li < INV_BACKPACK_CELLS; li++)
+	{
+		int page, slot2;
+		Inv_CellForLocal (li, &page, &slot2);
+		Inv_DrawItemSpan (s, Inv_BackpackRect (li), page, slot2);
 	}
 }
 
