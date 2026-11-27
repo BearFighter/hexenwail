@@ -36,8 +36,6 @@
 #define	INV_CELL_ICON	20
 #define	INV_BACKPACK_CELLS	(INV_GRID_COLS * INV_GRID_ROWS)
 #define	INV_OCCUPIED_ID		255	/* covered cell of a multi-cell item */
-#define	INV_FOOTPRINT_BASE	90	/* anchor count = 90 + w*8 + h */
-#define	INV_FOOTPRINT_STRIDE	8
 
 typedef struct inv_rect_t
 {
@@ -92,87 +90,94 @@ static float Inv_Find (client_state_t *client, int page, int slot, float *count)
 	return p->item_id[slot];
 }
 
-/* Item id -> icon path through the client's registered ex item list. */
-static void Inv_ItemIcon (client_state_t *client, float item_id, char *path, int size)
+/* Item registry strings are "gfx/artiNN.lmp" for a 1x1 item and
+ * "gfx/artiNN.lmp#WxH" for one with a larger footprint.  The suffix rides
+ * along the existing ex-item registration, so no protocol field is added. */
+static void Inv_ParseIconString (const char *src, char *path, int size,
+				 int *w, int *h)
+{
+	int n = 0;
+	const char *p;
+	int tw = 0, th = 0;
+
+	*w = 1;
+	*h = 1;
+	if (!src)
+	{
+		path[0] = 0;
+		return;
+	}
+	while (src[n] && src[n] != '#' && n + 1 < size)
+	{
+		path[n] = src[n];
+		n++;
+	}
+	path[n] = 0;
+	if (src[n] != '#')
+		return;
+
+	p = src + n + 1;
+	while (*p >= '0' && *p <= '9')
+	{
+		tw = tw * 10 + (*p - '0');
+		p++;
+	}
+	if (*p != 'x')
+		return;
+	p++;
+	while (*p >= '0' && *p <= '9')
+	{
+		th = th * 10 + (*p - '0');
+		p++;
+	}
+	if (*p || tw < 1 || th < 1)
+		return;
+
+	*w = tw > INV_GRID_COLS ? INV_GRID_COLS : tw;
+	*h = th > INV_GRID_ROWS ? INV_GRID_ROWS : th;
+}
+
+/* Item id -> icon path and footprint through the client's ex item list. */
+static void Inv_ItemInfo (client_state_t *client, float item_id,
+			  char *path, int size, int *w, int *h)
 {
 	int i;
+
 	path[0] = 0;
+	*w = 1;
+	*h = 1;
 	if (!client)
 		return;
 	for (i = 0; i < client->num_ex_items; i++)
 	{
 		if (client->ex_items[i].id == (int)item_id)
 		{
-			int n = 0;
-			const char *src = client->ex_items[i].icon;
-			while (n + 1 < size && src[n])
-			{
-				path[n] = src[n];
-				n++;
-			}
-			path[n] = 0;
+			Inv_ParseIconString (client->ex_items[i].icon,
+					     path, size, w, h);
 			return;
 		}
 	}
-}
-
-/* A scaled copy of the icon, so a 3x1 sword fills three cells lengthwise.
- * Draw_CachePicResize keys its cache by path alone and would thrash between
- * sizes in one frame, so scale into our own buffer instead. */
-typedef struct inv_scaled_pic_s
-{
-	qpic_t	pic;
-	byte	data[128 * 64];
-} inv_scaled_pic_t;
-
-static inv_scaled_pic_t inv_scaled_pic;
-
-static qpic_t *Inv_ScaledPic (qpic_t *src, int w, int h)
-{
-	int x, y;
-
-	if (!src || src->width <= 0 || src->height <= 0)
-		return NULL;
-	if (w < 1 || h < 1 || w > 128 || h > 64)
-		return NULL;
-
-	inv_scaled_pic.pic.width = w;
-	inv_scaled_pic.pic.height = h;
-	for (y = 0; y < h; y++)
-	{
-		int sy = y * src->height / h;
-		for (x = 0; x < w; x++)
-		{
-			int sx = x * src->width / w;
-			inv_scaled_pic.pic.data[y * w + x] =
-				src->data[sy * src->width + sx];
-		}
-	}
-	return &inv_scaled_pic.pic;
 }
 
 static void Inv_DrawItem (client_state_t *client, inv_rect_t r,
 			  float item_id, float count)
 {
 	char	path[MAX_QPATH];
-	qpic_t	*pic, *scaled;
+	int	w, h;
+	qpic_t	*pic;
 
-	path[0] = 0;
-	if (item_id > 0)
-		Inv_ItemIcon (client, item_id, path, sizeof(path));
+	Inv_ItemInfo (client, item_id, path, sizeof(path), &w, &h);
 	if (!path[0])
 		return;
 	pic = Draw_CachePic (path);
 	if (!pic || pic->width <= 0 || pic->height <= 0)
 		return;
 
-	scaled = Inv_ScaledPic (pic, r.w, r.h);
-	if (scaled)
-		Draw_Pic (r.x, r.y, scaled);
-	else
-		Draw_SubPic (r.x, r.y, pic, 0, 0, r.w, r.h);
+	/* The whole icon fills its footprint.  Draw_PicStretch keeps the GL and
+	 * software paths identical and never builds a fake qpic_t by hand. */
+	Draw_PicStretch (r.x, r.y, r.w, r.h, pic);
 
-	if (count > 1 && count < INV_FOOTPRINT_BASE)
+	if (count > 1)
 	{
 		char buf[16];
 		int val = (int)count;
@@ -221,13 +226,16 @@ static int Inv_LocalForCell (int page, int slot)
 	return -1;
 }
 
-/* The anchor's count carries its footprint (64 + w*8 + h).  Reading it here
- * keeps the UI correct even when a covered-cell marker is missing on the wire. */
+/* Footprint comes from the item registry, not from the stack count.  Counts
+ * stay honest (and savegames stay readable) while the icon string carries the
+ * size the generator authored in items.json. */
 static void Inv_SpanForAnchor (client_state_t *client, int anchor,
 			       int *w, int *h)
 {
-	int page, slot, encoded;
+	int page, slot, col, row;
 	float count;
+	float id;
+	char path[MAX_QPATH];
 
 	*w = 1;
 	*h = 1;
@@ -235,77 +243,88 @@ static void Inv_SpanForAnchor (client_state_t *client, int anchor,
 		return;
 
 	Inv_CellForLocal (anchor, &page, &slot);
-	if (Inv_Find (client, page, slot, &count) <= 0 ||
-	    count < INV_FOOTPRINT_BASE)
+	id = Inv_Find (client, page, slot, &count);
+	if (id <= 0 || (int)id == INV_OCCUPIED_ID)
 		return;
 
-	encoded = (int)count - INV_FOOTPRINT_BASE;
-	*w = encoded / INV_FOOTPRINT_STRIDE;
-	*h = encoded % INV_FOOTPRINT_STRIDE;
+	Inv_ItemInfo (client, id, path, sizeof(path), w, h);
+	col = anchor % INV_GRID_COLS;
+	row = anchor / INV_GRID_COLS;
+	if (col + *w > INV_GRID_COLS)
+		*w = INV_GRID_COLS - col;
+	if (row + *h > INV_GRID_ROWS)
+		*h = INV_GRID_ROWS - row;
 	if (*w < 1) *w = 1;
-	if (*w > INV_GRID_COLS) *w = INV_GRID_COLS;
 	if (*h < 1) *h = 1;
-	if (*h > INV_GRID_ROWS) *h = INV_GRID_ROWS;
 }
 
-/* Resolve a covered cell to the anchor whose footprint contains it. */
+static int Inv_SpanContains (int anchor, int w, int h, int li)
+{
+	int arow, acol, row, col;
+
+	if (anchor < 0 || anchor >= INV_BACKPACK_CELLS ||
+	    li < 0 || li >= INV_BACKPACK_CELLS)
+		return 0;
+	arow = anchor / INV_GRID_COLS;
+	acol = anchor % INV_GRID_COLS;
+	row = li / INV_GRID_COLS;
+	col = li % INV_GRID_COLS;
+	return row >= arow && row < arow + h &&
+	       col >= acol && col < acol + w;
+}
+
+/* Resolve a covered cell to its anchor.  The covered-cell marker is the fast
+ * path; the registry footprint is the fallback if a marker was not delivered. */
 static int Inv_AnchorForCell (client_state_t *client, int li)
 {
-	int i, arow, acol, row, col, w, h;
+	int i, page, slot, w, h;
+	float count;
+	float id;
 
 	if (li < 0 || li >= INV_BACKPACK_CELLS)
 		return -1;
 
-	row = li / INV_GRID_COLS;
-	col = li % INV_GRID_COLS;
+	Inv_CellForLocal (li, &page, &slot);
+	id = Inv_Find (client, page, slot, &count);
+	if ((int)id == INV_OCCUPIED_ID)
+	{
+		i = (int)count;
+		if (i >= 0 && i < INV_BACKPACK_CELLS)
+		{
+			Inv_SpanForAnchor (client, i, &w, &h);
+			if (Inv_SpanContains (i, w, h, li))
+				return i;
+		}
+	}
 
 	for (i = 0; i < INV_BACKPACK_CELLS; i++)
 	{
-		int page, slot;
-		float count;
 		Inv_CellForLocal (i, &page, &slot);
-		if (Inv_Find (client, page, slot, &count) <= 0 ||
-		    count < INV_FOOTPRINT_BASE)
+		id = Inv_Find (client, page, slot, &count);
+		if (id <= 0 || (int)id == INV_OCCUPIED_ID)
 			continue;
 		Inv_SpanForAnchor (client, i, &w, &h);
-		arow = i / INV_GRID_COLS;
-		acol = i % INV_GRID_COLS;
-		if (row >= arow && row < arow + h &&
-		    col >= acol && col < acol + w)
+		if (Inv_SpanContains (i, w, h, li))
 			return i;
 	}
 	return -1;
 }
 
-/* True when the selected or hovered cell sits inside this item's footprint. */
-static int Inv_SelectionInSpan (const inv_screen_t *s, int anchor, int w, int h)
+/* Selection and hover both resolve through the footprint, so clicking any
+ * cell of a 3x2 item highlights the whole item, not one square of it. */
+static int Inv_SelectionAnchor (const inv_screen_t *s)
 {
-	int li, arow, acol, row, col;
-
-	li = Inv_LocalForCell (s->page, s->slot);
-	if (li < 0 || anchor < 0 || anchor >= INV_BACKPACK_CELLS)
-		return 0;
-	arow = anchor / INV_GRID_COLS;
-	acol = anchor % INV_GRID_COLS;
-	row = li / INV_GRID_COLS;
-	col = li % INV_GRID_COLS;
-	return row >= arow && row < arow + h && col >= acol && col < acol + w;
+	int li = Inv_LocalForCell (s->page, s->slot);
+	return li >= 0 ? Inv_AnchorForCell (s->client, li) : -1;
 }
 
-static int Inv_HoverInSpan (const inv_screen_t *s, int anchor, int w, int h)
+static int Inv_HoverAnchor (const inv_screen_t *s)
 {
-	int li, arow, acol, row, col;
-
+	int li;
 	if (!s->hover_valid)
-		return 0;
+		return -1;
 	li = Inv_LocalForCell (s->hover_page, s->hover_slot);
-	if (li < 0 || anchor < 0 || anchor >= INV_BACKPACK_CELLS)
-		return 0;
-	arow = anchor / INV_GRID_COLS;
-	acol = anchor % INV_GRID_COLS;
-	row = li / INV_GRID_COLS;
-	col = li % INV_GRID_COLS;
-	return row >= arow && row < arow + h && col >= acol && col < acol + w;
+	return li >= 0 ? Inv_AnchorForCell (s->client, li) : -1;
 }
 
 static inv_rect_t Inv_EquipmentRect (int slot)
@@ -361,22 +380,43 @@ static void Inv_DrawCellFrame (inv_rect_t r, int selected, int hovered)
 }
 
 /* Draw one cell of the grid.  Frames always draw, including cells covered by
- * a multi-cell item, so the rows stay intact. */
+ * a multi-cell item, so the rows stay intact.  Selection/hover are resolved
+ * to the item's anchor first, making the whole footprint highlight. */
 static void Inv_DrawCell (const inv_screen_t *s, inv_rect_t r,
 			  int page, int slot)
 {
 	int li = Inv_LocalForCell (page, slot);
-	int w = 1, h = 1;
+	int anchor = -1;
+	int sel_anchor = Inv_SelectionAnchor (s);
+	int hov_anchor = Inv_HoverAnchor (s);
+	int selected, hovered;
 
 	if (li >= 0)
-		Inv_SpanForAnchor (s->client, li, &w, &h);
+		anchor = Inv_AnchorForCell (s->client, li);
 
-	Inv_DrawCellFrame (r,
-			   li >= 0 ? Inv_SelectionInSpan (s, li, w, h) :
-				     (s->page == page && s->slot == slot),
-			   li >= 0 ? Inv_HoverInSpan (s, li, w, h) :
-				     (s->hover_valid && s->hover_page == page &&
-				      s->hover_slot == slot));
+	if (li >= 0)
+	{
+		if (anchor >= 0)
+		{
+			selected = (sel_anchor == anchor);
+			hovered = (hov_anchor == anchor);
+		}
+		else
+		{
+			selected = (sel_anchor < 0 && s->page == page &&
+				    s->slot == slot);
+			hovered = (hov_anchor < 0 && s->hover_valid &&
+				   s->hover_page == page && s->hover_slot == slot);
+		}
+	}
+	else
+	{
+		selected = (s->page == page && s->slot == slot);
+		hovered = (s->hover_valid && s->hover_page == page &&
+			   s->hover_slot == slot);
+	}
+
+	Inv_DrawCellFrame (r, selected, hovered);
 }
 
 /* Draw an item over its whole footprint, once, from its anchor cell. */
@@ -396,12 +436,6 @@ static void Inv_DrawItemSpan (const inv_screen_t *s, inv_rect_t r,
 		if (anchor >= 0 && anchor != li)
 			return;
 		Inv_SpanForAnchor (s->client, li, &w, &h);
-	}
-	else
-	{
-		/* Equipment cells have no footprint. */
-		w = 1;
-		h = 1;
 	}
 
 	r.w = INV_CELL_ICON + (w - 1) * INV_GRID_PITCH;

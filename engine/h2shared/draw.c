@@ -822,6 +822,53 @@ void Draw_Pic (int x, int y, qpic_t *pic)
 	}
 }
 
+/* Draw the whole pic into an arbitrary rectangle.  GL uses the same entry
+ * point for stretched inventory icons; keep the software path identical so a
+ * multi-cell item covers the same pixels under all renderers. */
+void Draw_PicStretch (int x, int y, int w, int h, qpic_t *pic)
+{
+	int		u, v, sx;
+
+	if (!pic || pic->width <= 0 || pic->height <= 0 || w <= 0 || h <= 0)
+		return;
+
+	x += draw_canvas_x;
+	y += draw_canvas_y;
+
+	if ((x < 0) || (x + w > vid.width) ||
+	    (y < 0) || (y + h > vid.height))
+	{
+		Sys_Error ("%s: bad coordinates", __thisfunc__);
+	}
+
+	if (r_pixbytes == 1)
+	{
+		byte *dest = vid.buffer + y * vid.rowbytes + x;
+		for (v = 0; v < h; v++)
+		{
+			byte *source = pic->data + (v * pic->height / h) * pic->width;
+			for (u = 0; u < w; u++)
+				dest[u] = source[u * pic->width / w];
+			dest += vid.rowbytes;
+		}
+	}
+	else /* r_pixbytes == 2 */
+	{
+		unsigned short *dest = (unsigned short *)vid.buffer +
+			y * (vid.rowbytes / 2) + x;
+		for (v = 0; v < h; v++)
+		{
+			byte *source = pic->data + (v * pic->height / h) * pic->width;
+			for (u = 0; u < w; u++)
+			{
+				sx = u * pic->width / w;
+				dest[u] = d_8to16table[source[sx]];
+			}
+			dest += vid.rowbytes / 2;
+		}
+	}
+}
+
 
 //==========================================================================
 //

@@ -1343,6 +1343,22 @@ void SB_SetSelectedArtifact (int artifact)
 //
 //==========================================================================
 
+/* Extended item icons may carry an inventory footprint suffix
+ * ("gfx/artiNN.lmp#3x1").  The status bar only wants the real file name. */
+static const char *Sbar_ItemIconPath (const char *src)
+{
+	static char path[MAX_QPATH];
+	int i = 0;
+
+	while (src && src[i] && src[i] != '#' && i + 1 < (int)sizeof(path))
+	{
+		path[i] = src[i];
+		i++;
+	}
+	path[i] = 0;
+	return path;
+}
+
 static void DrawBarArtifactIcon(int x, int y, int position)
 {
 	int	j, i;
@@ -1390,7 +1406,7 @@ static void DrawBarArtifactIcon(int x, int y, int position)
 	{
 		if (cl.ex_items[i].id == page_from->item_id[position & 31])
 		{
-			Sbar_DrawTransPic(x, y, Draw_CachePic(cl.ex_items[i].icon));
+			Sbar_DrawTransPic(x, y, Draw_CachePic(Sbar_ItemIconPath(cl.ex_items[i].icon)));
 			DrawBarArtifactNumber(x + 20, y + 21, page_from->item_cnt[position & 31]);
 			break;
 		}
