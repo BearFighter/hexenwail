@@ -58,7 +58,9 @@ jobs:
             engine/rust/hashindex/tests/gen_fixtures.sh engine/rust/hashindex/tests/mutants.sh \
             engine/rust/info_str/tests/gen_fixtures.sh engine/rust/info_str/tests/mutants.sh \
             engine/rust/sv_main/tests/init_mutants.sh \
-            engine/rust/sv_main/tests/run_init_harness.sh
+            engine/rust/sv_main/tests/run_init_harness.sh \
+            engine/rust/sv_main/tests/class_mutants.sh \
+            engine/rust/sv_main/tests/run_class_harness.sh
 
       # The metainfo is what GNOME Software and KDE Discover read, and Flathub
       # rejects a submission whose metainfo does not validate.  Nothing checked

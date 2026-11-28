@@ -105,12 +105,9 @@ cvar_t	sv_cheats		= {"sv_cheats", "0", CVAR_NONE};
  * the game sets it from its own autoexec.cfg. */
 cvar_t	depraved_class		= {"depraved_class", "0", CVAR_NONE};
 
-int PlayerClass_Count (void)
-{
-	if (depraved_class.integer || (gameflags & GAME_PORTALS))
-		return MAX_PLAYER_CLASS;
-	return MAX_PLAYER_CLASS - PORTALS_EXTRA_CLASSES;
-}
+/* PlayerClass_Count is Rust now (#469 slice G).  Its C original is kept
+ * verbatim in engine/rust/sv_main/tests/sv_main_class_h2.c for the differential
+ * harness; the cvar and gameflags it reads stay C-owned. */
 
 /* max_edicts resolved and clamped, latched at map load.  Read this, not the
  * cvar, so a mid-map change cannot outrun the allocation. */

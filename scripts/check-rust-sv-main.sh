@@ -22,7 +22,8 @@
 # SV_MapCheckThresh, SV_MapCheckTitle; sv_main_spawn.rs), whose harness runs
 # once per way the engine compiles sv_main.c.  Slice F: the init and console
 # verbs (SV_Init, SV_Protocol_f, Max_Edicts_f, SV_Edicts, Sv_Edicts_f;
-# sv_main_init.rs).  Hexen II only:
+# sv_main_init.rs).  Slice G: the player-class count (PlayerClass_Count;
+# sv_main_class.rs).  Hexen II only:
 # HexenWorld's server has its own sv_main.c, and its own C message functions
 # of the same names in sv_send.c, which multicast; it has no SV_Max*.
 #
@@ -52,7 +53,7 @@ set -euo pipefail
 # (space-separated) runs a subset, which is how scripts/check-rust.sh
 # --shard splits this gate across CI jobs.  The symbol checks after the
 # harnesses run whatever the subset.
-all_parts=(sound ents datagram connect inv spawn init)
+all_parts=(sound ents datagram connect inv spawn init class)
 
 for arg in "$@"; do
 	case "$arg" in
@@ -89,6 +90,9 @@ inv_symbols=(SV_ParseWorldspawnSky SV_ClientInventoryPage INV_UpdateExItem SV_Ge
 # verbs and the cvar callback were static in C but are exported so the gate can
 # prove exactly one implementation of each is linked.
 init_symbols=(SV_Init SV_Protocol_f Max_Edicts_f SV_Edicts Sv_Edicts_f)
+# G / slice G: the menu and status bar call PlayerClass_Count in both Hexen II
+# binaries; HexenWorld's server has no such helper.
+class_symbols=(PlayerClass_Count)
 
 for tool in cc gcov cargo cmake nm; do
 	command -v "$tool" >/dev/null || {
@@ -112,6 +116,7 @@ for port in "${parts[@]}"; do
 		inv) feature=sv_main_inv; name=sv_main_inv; runner=run_inv_harness.sh; floor_digits=5 ;;
 		spawn) feature=sv_main_spawn; name=sv_main_spawn; runner=run_spawn_harness.sh; floor_digits=6 ;;
 		init) feature=sv_main_init; name=sv_main_init; runner=run_init_harness.sh; floor_digits=4 ;;
+		class) feature=sv_main_class; name=sv_main_class; runner=run_class_harness.sh; floor_digits=4 ;;
 	esac
 	echo "== $step. build the crate with $feature =="
 	step=$((step + 1))
@@ -224,6 +229,17 @@ for bin in hexenwail h2ded hwsv; do
 			exit 1
 		fi
 	done
+	# G / slice G: PlayerClass_Count is in the archive for hexenwail and
+	# h2ded; hwsv has neither the helper nor a class menu that would call it.
+	for sym in "${class_symbols[@]}"; do
+		want=1
+		[ "$bin" = hwsv ] && want=0
+		n=$(nm "$path" | grep -cE " [Tt] $sym\$" || true)
+		if [ "$n" -ne "$want" ]; then
+			echo "FAIL: $bin: $sym has $n definitions, expected $want" >&2
+			exit 1
+		fi
+	done
 	echo "  $bin: each defined once$([ "$bin" = hwsv ] && echo ' (HexenWorld'"'"'s sv_send.c), SV_Max* and the entity updates absent')"
 done
 # hwsv's message functions must be its sv_send.c's, not the Rust
@@ -247,7 +263,7 @@ while IFS= read -r obj; do
 	for sym in "${sound_symbols[@]}" SV_SoundEntityFits "${ents_symbols[@]}" \
 		SV_AddToFatPVS SV_FatPVS SV_EntityUpdateSize SV_EntityPriority \
 		"${connect_symbols[@]}" "${inv_symbols[@]}" "${spawn_symbols[@]}" \
-		"${init_symbols[@]}" \
+		"${init_symbols[@]}" "${class_symbols[@]}" \
 		SV_PrintMapChecklist SV_MapCheckThresh SV_MapCheckTitle; do
 		if nm "$obj" | grep -qE " [Tt] $sym\$"; then
 			echo "FAIL: ${obj#"$engine_build"/} still defines $sym" >&2
@@ -256,7 +272,7 @@ while IFS= read -r obj; do
 	done
 done <<<"$objects"
 echo "  $nobj Hexen II sv_main.c object(s): none defines the ported functions"
-stray=$(find "$engine_build" -name 'sv_main_sound_*.c.o' -o -name 'sv_main_ents_*.c.o' -o -name 'sv_main_datagram_*.c.o' -o -name 'sv_main_connect_*.c.o' -o -name 'sv_main_inv_*.c.o' -o -name 'sv_main_spawn_*.c.o' -o -name 'c_ref_ents.c.o' -o -name 'c_ref_connect.c.o' -o -name 'c_ref_inv.c.o' -o -name 'c_ref_spawn.c.o' -o -name 'c_ref_init.c.o' -o -name 'inv_harness.c.o' -o -name 'spawn_harness.c.o' -o -name 'init_harness.c.o' | wc -l)
+stray=$(find "$engine_build" -name 'sv_main_sound_*.c.o' -o -name 'sv_main_ents_*.c.o' -o -name 'sv_main_datagram_*.c.o' -o -name 'sv_main_connect_*.c.o' -o -name 'sv_main_inv_*.c.o' -o -name 'sv_main_spawn_*.c.o' -o -name 'c_ref_ents.c.o' -o -name 'c_ref_connect.c.o' -o -name 'c_ref_inv.c.o' -o -name 'c_ref_spawn.c.o' -o -name 'c_ref_init.c.o' -o -name 'c_ref_class.c.o' -o -name 'sv_main_class_*.c.o' -o -name 'inv_harness.c.o' -o -name 'spawn_harness.c.o' -o -name 'init_harness.c.o' -o -name 'class_harness.c.o' | wc -l)
 [ "$stray" -eq 0 ] || {
 	echo "FAIL: $stray harness fixture object(s) in the engine build" >&2
 	exit 1
@@ -265,6 +281,7 @@ stray=$(find "$engine_build" -name 'sv_main_sound_*.c.o' -o -name 'sv_main_ents_
 echo "PASS: Rust sv_main.c ports (the sound and particle messages and protocol"
 echo "      limits, the entity updates, the client data and datagrams, connect and"
 echo "      signon, the inventory and savegame helpers, the map spawn and its"
-echo "      map_checks readout) -- each harness agrees with its C original, every"
+echo "      map_checks readout, the init verbs and the player-class count) -- each"
+echo "      harness agrees with its C original, every"
 echo "      line of it ran, each Hexen II binary links each symbol once, hwsv only"
 echo "      its own, and sv_main.c defines none of them."

@@ -114,6 +114,11 @@ sv_main_spawn = ["world_hull"]
 # the file writers, PR_GetString and SV_ProtocolName) stay extern "C", so the
 # differential harness can record them; no feature dependency is needed.
 sv_main_init = []
+# G / slice G of #469: Hexen II's PlayerClass_Count.  Its two inputs
+# (`depraved_class` and `gameflags`) and its three header constants stay
+# C-owned behind sv_main_target.c, so there is no feature dependency and no
+# Rust-exported static on wasm.
+sv_main_class = []
 
 [profile.release]
 # Unwinding across an FFI boundary is undefined behaviour. Fatal paths go

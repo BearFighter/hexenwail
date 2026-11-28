@@ -459,4 +459,19 @@ void		*SvMainInit_OpenFile (const char *name);
 int		SvMainInit_PrintFile (void *file, const char *fmt, ...);
 void		SvMainInit_CloseFile (void *file);
 
+/* G / slice G of #469: sv_main_class.rs's PlayerClass_Count.  The cvar and the
+ * game flags stay C-owned; the three constants come from the engine's headers
+ * so a mod changing MAX_PLAYER_CLASS or PORTALS_EXTRA_CLASSES cannot drift
+ * between the two implementations. */
+typedef struct sv_main_class_facts_s
+{
+	int	max_player_class, portals_extra_classes;
+	unsigned int	game_portals;
+} sv_main_class_facts_t;
+
+extern const sv_main_class_facts_t	SvMainClass_TargetFacts;
+
+int		SvMainClass_DepravedClass (void);	/* depraved_class.integer */
+unsigned int	SvMainClass_GameFlags (void);		/* gameflags */
+
 #endif	/* SV_MAIN_TARGET_H */

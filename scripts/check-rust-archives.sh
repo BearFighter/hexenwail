@@ -26,9 +26,9 @@ check_count() { # file symbol expected-count
 
 for target in hexenwail h2ded hwsv; do
     case "$target" in
-        hexenwail) variant=client; features=$common,wad,net_loop_h2,net_bsd_h2,net_udp_h2,huffman,net_udp_hw,net_chan,sv_main_sound,sv_main_ents,sv_main_datagram,sv_main_connect,sv_main_inv,sv_main_spawn,sv_main_init;
+        hexenwail) variant=client; features=$common,wad,net_loop_h2,net_bsd_h2,net_udp_h2,huffman,net_udp_hw,net_chan,sv_main_sound,sv_main_ents,sv_main_datagram,sv_main_connect,sv_main_inv,sv_main_spawn,sv_main_init,sv_main_class;
             wad=1; info=0; hw=1 ;;
-        h2ded) variant=h2ded; features=$common,net_bsd_h2,net_udp_h2,h2ded_target,sv_main_sound,sv_main_ents,sv_main_datagram,sv_main_connect,sv_main_inv,sv_main_spawn,sv_main_init;
+        h2ded) variant=h2ded; features=$common,net_bsd_h2,net_udp_h2,h2ded_target,sv_main_sound,sv_main_ents,sv_main_datagram,sv_main_connect,sv_main_inv,sv_main_spawn,sv_main_init,sv_main_class;
             wad=0; info=0; hw=0 ;;
         hwsv) variant=hwsv; features=$common,info_str,huffman,net_udp_hw,net_chan,world_trace_hw;
             wad=0; info=1; hw=1 ;;
@@ -128,6 +128,10 @@ for target in hexenwail h2ded hwsv; do
         check_count "$archive" "$sym" "$h2"
         check_count "$binary" "$sym" "$h2"
     done
+    # G / slice G: PlayerClass_Count is in the Hexen II archives only.  The
+    # client's menu.c and sbar.c call it, so every Hexen II binary has one.
+    check_count "$archive" PlayerClass_Count "$h2"
+    check_count "$binary" PlayerClass_Count "$h2"
     # The hull traces' fatal path names the target's own error function: the
     # hwsv archive must reach SV_Error (world_trace_hw) and the other two must
     # not, since only hwsv defines it -- an archive that did would fail to

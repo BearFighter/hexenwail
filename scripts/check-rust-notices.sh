@@ -116,6 +116,7 @@ derived_map() {
 	engine/rust/src/sv_main_inv.rs        engine/hexen2/sv_main.c
 	engine/rust/src/sv_main_spawn.rs      engine/hexen2/sv_main.c
 	engine/rust/src/sv_main_init.rs       engine/hexen2/sv_main.c
+	engine/rust/src/sv_main_class.rs      engine/hexen2/sv_main.c
 	engine/rust/src/strlcat.rs            common/strlcat.c
 	engine/rust/src/strlcpy.rs            common/strlcpy.c
 	engine/rust/src/wad.rs                engine/h2shared/wad.c

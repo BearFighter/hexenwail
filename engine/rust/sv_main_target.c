@@ -511,3 +511,16 @@ void SvMainInit_CloseFile (void *file)
 	fclose ((FILE *)file);
 }
 #endif
+
+/* ---- G / slice G of #469: PlayerClass_Count ---------------------------- */
+
+extern	cvar_t		depraved_class;
+extern	unsigned int	gameflags;
+
+const sv_main_class_facts_t SvMainClass_TargetFacts =
+{
+	MAX_PLAYER_CLASS, PORTALS_EXTRA_CLASSES, GAME_PORTALS
+};
+
+int SvMainClass_DepravedClass (void)	{ return depraved_class.integer; }
+unsigned int SvMainClass_GameFlags (void) { return gameflags; }

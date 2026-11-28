@@ -162,6 +162,10 @@ pub mod sv_main_spawn;
 // dump.  Hexen II's targets only; hwsv keeps its own HexenWorld server init.
 #[cfg(feature = "sv_main_init")]
 pub mod sv_main_init;
+// G / slice G of #469: Hexen II's PlayerClass_Count.  Hexen II's targets only;
+// hwsv has its own class handling.
+#[cfg(feature = "sv_main_class")]
+pub mod sv_main_class;
 
 /// There is exactly one panic handler for every combination of Rust ports.
 /// Panics must never unwind through a C caller.

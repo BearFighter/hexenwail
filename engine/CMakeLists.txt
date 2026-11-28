@@ -1014,6 +1014,9 @@ list(APPEND RUST_ENGINE_H2_SERVER_FEATURES sv_main_spawn)
 # F / slice F: SV_Init and the console verbs.  hwsv keeps HexenWorld's own
 # SV_Init in its sv_main.c; none of the other four names exist there.
 list(APPEND RUST_ENGINE_H2_SERVER_FEATURES sv_main_init)
+# G / slice G: PlayerClass_Count.  menu.c and sbar.c call it in the client as
+# well as the listen server; h2ded keeps it for the server's own callers.
+list(APPEND RUST_ENGINE_H2_SERVER_FEATURES sv_main_class)
 list(APPEND RUST_ENGINE_CLIENT_FEATURES ${RUST_ENGINE_H2_SERVER_FEATURES})
 list(APPEND RUST_ENGINE_H2DED_FEATURES ${RUST_ENGINE_H2_SERVER_FEATURES})
 # world_trace_hw: hexenworld/server/world.c's hull traces report a bad node

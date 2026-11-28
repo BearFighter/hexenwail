@@ -260,6 +260,11 @@ int SvMainInit_EdictSize (void) { return 0; }
 void *SvMainInit_OpenFile (const char *name) { (void) name; return NULL; }
 int SvMainInit_PrintFile (void *file, const char *fmt, ...) { (void) file; (void) fmt; return 0; }
 void SvMainInit_CloseFile (void *file) { (void) file; }
+/* G / slice G: sv_main_class.rs reads these facts and accessors.  PlayerClass_Count
+ * itself comes from the archive, so it needs no stub here. */
+const sv_main_class_facts_t SvMainClass_TargetFacts;
+int SvMainClass_DepravedClass (void) { return 0; }
+unsigned int SvMainClass_GameFlags (void) { return 0; }
 /* These are Rust ports in this all-features archive (cvar.rs, cmd.rs and
  * sv_main_connect.rs), so declaring them here would collide with the
  * staticlib.  Only the C-owned callees need stubs. */
@@ -436,6 +441,10 @@ RUST_ACCESSOR(SvMainSpawnFacts_offsetof_localmodel_size)
  * after size_ts; wasm32's 4-byte size_t moves that offset. */
 RUST_ACCESSOR(SvMainInitFacts_sizeof)
 RUST_ACCESSOR(SvMainInitFacts_offsetof_hw_version_num)
+/* G / slice G: sv_main_class.rs's all-int facts table.  No pointer-sized
+ * member, but the layout is still checked rather than assumed. */
+RUST_ACCESSOR(SvMainClassFacts_sizeof)
+RUST_ACCESSOR(SvMainClassFacts_offsetof_game_portals)
 STRUCT_ACCESSORS(WorldAreaNode)
 RUST_ACCESSOR(WorldAreaNode_offsetof_dist)
 RUST_ACCESSOR(WorldAreaNode_offsetof_children)
@@ -837,6 +846,9 @@ int main (void)
 	/* F / slice F */
 	SIZE(sv_main_init_facts_t, SvMainInitFacts);
 	OFF(sv_main_init_facts_t, hw_version_num, SvMainInitFacts, hw_version_num);
+	/* G / slice G */
+	SIZE(sv_main_class_facts_t, SvMainClassFacts);
+	OFF(sv_main_class_facts_t, game_portals, SvMainClassFacts, game_portals);
 
 	SIZE(abi_areanode_t, WorldAreaNode);
 	OFF(abi_areanode_t, dist, WorldAreaNode, dist);

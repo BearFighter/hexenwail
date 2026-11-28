@@ -92,6 +92,7 @@ item_weight() {
 		sv-main:ents) echo 106 ;;
 		sv-main:connect) echo 98 ;;
 		sv-main:init) echo 88 ;;
+		sv-main:class) echo 60 ;;
 		world-trace:h2/svwalk) echo 82 ;;
 		world-trace:hw/svwalk) echo 72 ;;
 		world-trace:hw/svphys) echo 56 ;;
