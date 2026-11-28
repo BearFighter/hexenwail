@@ -51,7 +51,7 @@ def parts(gate):
 
 sv_parts = parts("sv-main")
 wt_parts = parts("world-trace")
-if sv_parts != ["sound", "ents", "datagram", "connect", "inv", "spawn"]:
+if sv_parts != ["sound", "ents", "datagram", "connect", "inv", "spawn", "init"]:
     errors.append(f"sv-main --list-parts: unexpected {sv_parts}")
 expected_wt = [f"{v}/{p}" for v in ("h2", "hw")
                for p in ("trace", "hull", "link", "move", "svmove", "svphys",

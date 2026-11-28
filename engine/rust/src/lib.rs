@@ -158,9 +158,16 @@ pub mod sv_main_inv;
 // E2 / slice E of #469: Hexen II's SV_SpawnServer and the map_checks readout.
 #[cfg(feature = "sv_main_spawn")]
 pub mod sv_main_spawn;
+// F / slice F of #469: Hexen II's SV_Init, sv_protocol verb and the edict
+// dump.  Hexen II's targets only; hwsv keeps its own HexenWorld server init.
+#[cfg(feature = "sv_main_init")]
+pub mod sv_main_init;
 
 /// There is exactly one panic handler for every combination of Rust ports.
 /// Panics must never unwind through a C caller.
+// `cargo test` links the harness against std, which supplies its own panic
+// handler; only the staticlib the engine links needs this one.
+#[cfg(not(test))]
 #[panic_handler]
 fn panic(_info: &core::panic::PanicInfo) -> ! {
     unsafe { abort() }
@@ -168,7 +175,9 @@ fn panic(_info: &core::panic::PanicInfo) -> ! {
 
 /// `compiler_builtins` emits a relocation for this symbol even with
 /// `panic = "abort"`. Each target links one staticlib with this definition,
-/// rather than multiple per-subsystem archives with duplicate runtimes.
+/// rather than multiple per-subsystem archives with duplicate runtimes.  std's
+/// test harness defines it as well, so leave it to std under `cargo test`.
+#[cfg(not(test))]
 #[no_mangle]
 pub extern "C" fn rust_eh_personality() {}
 
@@ -181,6 +190,7 @@ pub extern "C" fn rust_eh_personality() {}
 #[no_mangle]
 pub static mut vec3_origin: mathlib::Vec3 = [0.0, 0.0, 0.0];
 
+#[cfg(not(test))]
 extern "C" {
     fn abort() -> !;
 }

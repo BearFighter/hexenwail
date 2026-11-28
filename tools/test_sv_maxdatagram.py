@@ -13,11 +13,20 @@ from pathlib import Path
 import re
 import sys
 
-src = (Path(__file__).resolve().parents[1] / "engine/hexen2/sv_main.c").read_text()
+ROOT = Path(__file__).resolve().parents[1]
+read = lambda p: (ROOT / p).read_text()
 errors = []
-if 'cvar_t	sv_maxdatagram		= {"sv_maxdatagram", "0", CVAR_NONE};' not in src or \
-   "Cvar_RegisterVariable (&sv_maxdatagram);" not in src:
-    errors.append("sv_maxdatagram must be registered, default 0 (no cap)")
+src = read("engine/hexen2/sv_main.c")
+if 'cvar_t	sv_maxdatagram		= {"sv_maxdatagram", "0", CVAR_NONE};' not in src:
+    errors.append("sv_maxdatagram must default to 0 (no cap)")
+# SV_Init is Rust now (#469 slice F).  Its C original is kept verbatim in the
+# harness fixture; both the fixture and the port must register the cvar.
+init_c = read("engine/rust/sv_main/tests/sv_main_init_h2.c")
+init_rs = read("engine/rust/src/sv_main_init.rs")
+if "Cvar_RegisterVariable (&sv_maxdatagram);" not in init_c:
+    errors.append("the C SV_Init fixture must register sv_maxdatagram")
+if "Cvar_RegisterVariable(cvar(Cvar::SvMaxDatagram));" not in init_rs:
+    errors.append("sv_main_init.rs must register sv_maxdatagram")
 if "#define	SV_MAXDATAGRAM_FLOOR	MAX_DATAGRAM_OLD" not in src:
     errors.append("the cap must be floored at MAX_DATAGRAM_OLD (1024)")
 # SV_SendClientDatagram is Rust now (#469 slice C): its C original was moved

@@ -26,9 +26,9 @@ check_count() { # file symbol expected-count
 
 for target in hexenwail h2ded hwsv; do
     case "$target" in
-        hexenwail) variant=client; features=$common,wad,net_loop_h2,net_bsd_h2,net_udp_h2,huffman,net_udp_hw,net_chan,sv_main_sound,sv_main_ents,sv_main_datagram,sv_main_connect,sv_main_inv,sv_main_spawn;
+        hexenwail) variant=client; features=$common,wad,net_loop_h2,net_bsd_h2,net_udp_h2,huffman,net_udp_hw,net_chan,sv_main_sound,sv_main_ents,sv_main_datagram,sv_main_connect,sv_main_inv,sv_main_spawn,sv_main_init;
             wad=1; info=0; hw=1 ;;
-        h2ded) variant=h2ded; features=$common,net_bsd_h2,net_udp_h2,h2ded_target,sv_main_sound,sv_main_ents,sv_main_datagram,sv_main_connect,sv_main_inv,sv_main_spawn;
+        h2ded) variant=h2ded; features=$common,net_bsd_h2,net_udp_h2,h2ded_target,sv_main_sound,sv_main_ents,sv_main_datagram,sv_main_connect,sv_main_inv,sv_main_spawn,sv_main_init;
             wad=0; info=0; hw=0 ;;
         hwsv) variant=hwsv; features=$common,info_str,huffman,net_udp_hw,net_chan,world_trace_hw;
             wad=0; info=1; hw=1 ;;
@@ -119,6 +119,15 @@ for target in hexenwail h2ded hwsv; do
     check_count "$binary" SV_SpawnServer 1
     check_count "$archive" SV_PrintMapCheck 0
     check_count "$binary" SV_PrintMapCheck "$h2"
+    # F / slice F: the Hexen II archives own SV_Init and the three
+    # formerly-file-static verbs/callback.  hwsv's SV_Init is HexenWorld's
+    # own C, so every binary still has one SV_Init.
+    check_count "$archive" SV_Init "$h2"
+    check_count "$binary" SV_Init 1
+    for sym in SV_Protocol_f Max_Edicts_f SV_Edicts Sv_Edicts_f; do
+        check_count "$archive" "$sym" "$h2"
+        check_count "$binary" "$sym" "$h2"
+    done
     # The hull traces' fatal path names the target's own error function: the
     # hwsv archive must reach SV_Error (world_trace_hw) and the other two must
     # not, since only hwsv defines it -- an archive that did would fail to

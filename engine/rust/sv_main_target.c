@@ -8,7 +8,10 @@
  */
 
 #include "quakedef.h"
+#include "filenames.h"
 #include "sv_main_target.h"
+
+#include <stdarg.h>
 
 const sv_main_target_facts_t SvMain_TargetFacts =
 {
@@ -375,4 +378,136 @@ void SvMainSpawn_EndLoadingPlaque (void)	{ }
 int *SvMainSpawn_FlushTextures (void)		{ return (int *)&flush_textures; }
 #else
 int *SvMainSpawn_FlushTextures (void)		{ return NULL; }
+#endif
+
+/* ---- F / slice F of #469: SV_Init and the console commands -------------- */
+
+extern	cvar_t	sv_maxvelocity;
+extern	cvar_t	sv_gravity;
+extern	cvar_t	sv_friction;
+extern	cvar_t	sv_edgefriction;
+extern	cvar_t	sv_stopspeed;
+extern	cvar_t	sv_maxspeed;
+extern	cvar_t	sv_accelerate;
+extern	cvar_t	sv_altnoclip;
+extern	cvar_t	sv_idealpitchscale;
+extern	cvar_t	sv_idealrollscale;
+extern	cvar_t	sv_aim;
+extern	cvar_t	sv_nostep;
+extern	cvar_t	sv_walkpitch;
+extern	cvar_t	sv_gameplayfix_elevators;
+extern	cvar_t	sv_freezenonclients;
+extern	cvar_t	max_edicts;
+extern	cvar_t	sv_maxdatagram;
+extern	cvar_t	sv_cheats;
+extern	cvar_t	sv_gameplayfix_random;
+extern	cvar_t	pr_checkextension;
+extern	cvar_t	hexenwail_version;
+extern	cvar_t	sv_flypitch;
+extern	cvar_t	sv_debugmovestep;
+extern	cvar_t	sv_sound_distance;
+extern	cvar_t	sv_update_player;
+extern	cvar_t	sv_update_monsters;
+extern	cvar_t	sv_update_missiles;
+extern	cvar_t	sv_update_misc;
+extern	cvar_t	sv_netsort;
+extern	cvar_t	sv_ce_scale;
+extern	cvar_t	sv_ce_max_size;
+
+#define SVF(member)	offsetof (server_t, member)
+#define EF(member)	offsetof (edict_t, member)
+#define EVF(member)	offsetof (entvars_t, member)
+
+const sv_main_init_facts_t SvMainInit_TargetFacts =
+{
+	PROTOCOL_RAVEN_111, PROTOCOL_RAVEN_112, PROTOCOL_UQE_113,
+	PROTOCOL_UH2_114, PROTOCOL_HEXENWAIL_1,
+	_PRINT_NORMAL, _PRINT_SAFE, _PRINT_TERMONLY,
+	MAX_MODELS, sizeof (localmodels[0]),
+	SVF(active), SVF(time), SVF(num_edicts),
+	EF(v), EVF(nextthink), EVF(classname), EVF(model),
+	EVF(think), EVF(touch), EVF(use),
+	sizeof (dfunction_t), offsetof (dfunction_t, s_name),
+	(double)HW_VERSION_NUM
+};
+
+static cvar_t *sv_main_init_cvars[] =
+{
+	&sv_maxvelocity, &sv_gravity, &sv_friction, &sv_edgefriction,
+	&sv_stopspeed, &sv_maxspeed, &sv_accelerate, &sv_altnoclip,
+	&sv_idealpitchscale, &sv_idealrollscale, &sv_aim, &sv_nostep,
+	&sv_walkpitch, &sv_gameplayfix_elevators, &sv_freezenonclients,
+	&max_edicts, &sv_maxdatagram, &sv_cheats,
+	&sv_gameplayfix_random, &pr_checkextension, &hexenwail_version,
+	&sv_flypitch, &sv_debugmovestep, &sv_sound_distance,
+	&sv_update_player, &sv_update_monsters, &sv_update_missiles,
+	&sv_update_misc, &sv_netsort, &sv_ce_scale, &sv_ce_max_size
+};
+
+void *SvMainInit_Cvar (int index)
+{
+	if (index < 0 || index >= (int)(sizeof sv_main_init_cvars / sizeof sv_main_init_cvars[0]))
+		return NULL;
+	return sv_main_init_cvars[index];
+}
+
+int SvMainInit_Argc (void)			{ return Cmd_Argc (); }
+const char *SvMainInit_Argv (int i)		{ return Cmd_Argv (i); }
+int SvMainInit_LaunchArgc (void)		{ return com_argc; }
+const char *SvMainInit_LaunchArgv (int i)	{ return com_argv[i]; }
+unsigned char *SvMainInit_Server (void)		{ return (unsigned char *)&sv; }
+int *SvMainInit_Protocol (void)			{ return &sv_protocol; }
+void SvMainInit_SetProtocolUserset (int v)	{ sv_protocol_userset = v; }
+int *SvMainInit_KingOfHill (void)		{ return &sv_kingofhill; }
+char *SvMainInit_LocalModels (void)		{ return localmodels[0]; }
+unsigned char *SvMainInit_Functions (void)	{ return (unsigned char *)pr_functions; }
+unsigned char *SvMainInit_Edicts (void)		{ return (unsigned char *)sv.edicts; }
+int SvMainInit_EdictSize (void)			{ return pr_edict_size; }
+
+#ifdef SV_FIXTURE
+/* The harness records the path, the formatted line and each close; both the
+ * C original and the Rust port reach these through the same shim. */
+extern void *c_ref_fopen (const char *path, const char *mode);
+extern int c_ref_vfprintf (void *file, const char *fmt, va_list ap);
+extern void c_ref_fclose (void *file);
+
+void *SvMainInit_OpenFile (const char *name)
+{
+	return c_ref_fopen (FS_MakePath (FS_USERDIR, NULL, name), "w");
+}
+
+int SvMainInit_PrintFile (void *file, const char *fmt, ...)
+{
+	va_list	ap;
+	int	r;
+	va_start (ap, fmt);
+	r = c_ref_vfprintf (file, fmt, ap);
+	va_end (ap);
+	return r;
+}
+
+void SvMainInit_CloseFile (void *file)
+{
+	c_ref_fclose (file);
+}
+#else
+void *SvMainInit_OpenFile (const char *name)
+{
+	return fopen (FS_MakePath (FS_USERDIR, NULL, name), "w");
+}
+
+int SvMainInit_PrintFile (void *file, const char *fmt, ...)
+{
+	va_list	ap;
+	int	r;
+	va_start (ap, fmt);
+	r = vfprintf ((FILE *)file, fmt, ap);
+	va_end (ap);
+	return r;
+}
+
+void SvMainInit_CloseFile (void *file)
+{
+	fclose ((FILE *)file);
+}
 #endif

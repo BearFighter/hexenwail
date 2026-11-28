@@ -33,6 +33,7 @@ struct cvar_s;		/* cvar.h names it in a prototype before defining it */
  * the plain struct. */
 #include "net.h"
 #include "sys.h"	/* fsfind_t, for the Sys_Find* stubs quakefs.rs needs */
+#include "sv_main_target.h"	/* the sv_main_init facts and target accessors */
 
 #include <stddef.h>
 #include <stdio.h>
@@ -239,6 +240,33 @@ void PR_ExecuteProgram (int fnum, const char *funcname) { (void) fnum; (void) fu
 const char *PR_GetString (int num) { (void) num; return ""; }
 void *GetEdictFieldValue (void *ed, const char *field) { (void) ed; (void) field; return NULL; }
 
+/* F / slice F: sv_main_init.rs's facts and accessors.  The facts object pulls
+ * its layout probe in; every accessor and every engine call must resolve even
+ * though this program never calls any of them. */
+const sv_main_init_facts_t SvMainInit_TargetFacts;
+void *SvMainInit_Cvar (int index) { (void) index; return NULL; }
+int SvMainInit_Argc (void) { return 0; }
+const char *SvMainInit_Argv (int i) { (void) i; return ""; }
+int SvMainInit_LaunchArgc (void) { return 0; }
+const char *SvMainInit_LaunchArgv (int i) { (void) i; return ""; }
+unsigned char *SvMainInit_Server (void) { return NULL; }
+int *SvMainInit_Protocol (void) { return NULL; }
+void SvMainInit_SetProtocolUserset (int v) { (void) v; }
+int *SvMainInit_KingOfHill (void) { return NULL; }
+char *SvMainInit_LocalModels (void) { return NULL; }
+unsigned char *SvMainInit_Functions (void) { return NULL; }
+unsigned char *SvMainInit_Edicts (void) { return NULL; }
+int SvMainInit_EdictSize (void) { return 0; }
+void *SvMainInit_OpenFile (const char *name) { (void) name; return NULL; }
+int SvMainInit_PrintFile (void *file, const char *fmt, ...) { (void) file; (void) fmt; return 0; }
+void SvMainInit_CloseFile (void *file) { (void) file; }
+/* These are Rust ports in this all-features archive (cvar.rs, cmd.rs and
+ * sv_main_connect.rs), so declaring them here would collide with the
+ * staticlib.  Only the C-owned callees need stubs. */
+void Host_Callback_Notify (cvar_t *var) { (void) var; abort (); }
+void SV_DebugMoveStep_Changed (cvar_t *var) { (void) var; abort (); }
+void SV_UserInit (void) { abort (); }
+
 /* areanode_t from world.h, copied as the hull structs are; world_link.rs
  * links to world.c's sv_areanodes, stood in for here. */
 typedef struct abi_areanode_s {
@@ -404,6 +432,10 @@ RUST_ACCESSOR(SvMainSpawnFacts_offsetof_sv_active)
 RUST_ACCESSOR(SvMainSpawnFacts_offsetof_mc_skill_ents)
 RUST_ACCESSOR(SvMainSpawnFacts_offsetof_g_serverflags)
 RUST_ACCESSOR(SvMainSpawnFacts_offsetof_localmodel_size)
+/* F / slice F: sv_main_init.rs's facts table, whose last member is a double
+ * after size_ts; wasm32's 4-byte size_t moves that offset. */
+RUST_ACCESSOR(SvMainInitFacts_sizeof)
+RUST_ACCESSOR(SvMainInitFacts_offsetof_hw_version_num)
 STRUCT_ACCESSORS(WorldAreaNode)
 RUST_ACCESSOR(WorldAreaNode_offsetof_dist)
 RUST_ACCESSOR(WorldAreaNode_offsetof_children)
@@ -802,6 +834,9 @@ int main (void)
 	OFF(sv_main_spawn_facts_t, mc_skill_ents, SvMainSpawnFacts, mc_skill_ents);
 	OFF(sv_main_spawn_facts_t, g_serverflags, SvMainSpawnFacts, g_serverflags);
 	OFF(sv_main_spawn_facts_t, localmodel_size, SvMainSpawnFacts, localmodel_size);
+	/* F / slice F */
+	SIZE(sv_main_init_facts_t, SvMainInitFacts);
+	OFF(sv_main_init_facts_t, hw_version_num, SvMainInitFacts, hw_version_num);
 
 	SIZE(abi_areanode_t, WorldAreaNode);
 	OFF(abi_areanode_t, dist, WorldAreaNode, dist);

@@ -1011,6 +1011,9 @@ list(APPEND RUST_ENGINE_H2_SERVER_FEATURES sv_main_inv)
 # E2 / slice E: SV_SpawnServer and the map_checks readout.  hwsv keeps its own
 # SV_SpawnServer, HexenWorld's sv_init.c.
 list(APPEND RUST_ENGINE_H2_SERVER_FEATURES sv_main_spawn)
+# F / slice F: SV_Init and the console verbs.  hwsv keeps HexenWorld's own
+# SV_Init in its sv_main.c; none of the other four names exist there.
+list(APPEND RUST_ENGINE_H2_SERVER_FEATURES sv_main_init)
 list(APPEND RUST_ENGINE_CLIENT_FEATURES ${RUST_ENGINE_H2_SERVER_FEATURES})
 list(APPEND RUST_ENGINE_H2DED_FEATURES ${RUST_ENGINE_H2_SERVER_FEATURES})
 # world_trace_hw: hexenworld/server/world.c's hull traces report a bad node

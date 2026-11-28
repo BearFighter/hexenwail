@@ -20,7 +20,9 @@
 # INV_SavePages; sv_main_inv.rs).  Slice E, unit E2: the map spawn and its
 # map_checks readout (SV_SpawnServer, SV_PrintMapChecklist,
 # SV_MapCheckThresh, SV_MapCheckTitle; sv_main_spawn.rs), whose harness runs
-# once per way the engine compiles sv_main.c.  Hexen II only:
+# once per way the engine compiles sv_main.c.  Slice F: the init and console
+# verbs (SV_Init, SV_Protocol_f, Max_Edicts_f, SV_Edicts, Sv_Edicts_f;
+# sv_main_init.rs).  Hexen II only:
 # HexenWorld's server has its own sv_main.c, and its own C message functions
 # of the same names in sv_send.c, which multicast; it has no SV_Max*.
 #
@@ -50,7 +52,7 @@ set -euo pipefail
 # (space-separated) runs a subset, which is how scripts/check-rust.sh
 # --shard splits this gate across CI jobs.  The symbol checks after the
 # harnesses run whatever the subset.
-all_parts=(sound ents datagram connect inv spawn)
+all_parts=(sound ents datagram connect inv spawn init)
 
 for arg in "$@"; do
 	case "$arg" in
@@ -83,6 +85,10 @@ connect_symbols=(SV_ProtocolName SV_SendServerinfo SV_CheckForNewClients SV_Mode
 # host_cmd.c, pr_cmds.c and cl_parse.c call them, and so does sv_main_spawn.rs)
 inv_symbols=(SV_ParseWorldspawnSky SV_ClientInventoryPage INV_UpdateExItem SV_GetLevelname
 	SV_SaveSpawnparms INV_WritePage SV_LoadInventory INV_SavePages)
+# F / slice F: SV_Init and SV_Edicts are C-visible in host.c; the two console
+# verbs and the cvar callback were static in C but are exported so the gate can
+# prove exactly one implementation of each is linked.
+init_symbols=(SV_Init SV_Protocol_f Max_Edicts_f SV_Edicts Sv_Edicts_f)
 
 for tool in cc gcov cargo cmake nm; do
 	command -v "$tool" >/dev/null || {
@@ -105,6 +111,7 @@ for port in "${parts[@]}"; do
 		connect) feature=sv_main_connect; name=sv_main_connect; runner=run_connect_harness.sh; floor_digits=6 ;;
 		inv) feature=sv_main_inv; name=sv_main_inv; runner=run_inv_harness.sh; floor_digits=5 ;;
 		spawn) feature=sv_main_spawn; name=sv_main_spawn; runner=run_spawn_harness.sh; floor_digits=6 ;;
+		init) feature=sv_main_init; name=sv_main_init; runner=run_init_harness.sh; floor_digits=4 ;;
 	esac
 	echo "== $step. build the crate with $feature =="
 	step=$((step + 1))
@@ -203,6 +210,20 @@ for bin in hexenwail h2ded hwsv; do
 			exit 1
 		fi
 	done
+	# F / slice F: Hexen II's SV_Init comes from the archive in hexenwail and
+	# h2ded; hwsv's is HexenWorld's own C.  The three other symbols were
+	# file-static in Hexen II's sv_main.c and are absent from hwsv.
+	for sym in "${init_symbols[@]}"; do
+		want=1
+		# hwsv's SV_Init is HexenWorld's own sv_main.c; the other four are
+		# Hexen II console verbs/callbacks and do not exist there.
+		[ "$bin" = hwsv ] && [ "$sym" != SV_Init ] && want=0
+		n=$(nm "$path" | grep -cE " [Tt] $sym\$" || true)
+		if [ "$n" -ne "$want" ]; then
+			echo "FAIL: $bin: $sym has $n definitions, expected $want" >&2
+			exit 1
+		fi
+	done
 	echo "  $bin: each defined once$([ "$bin" = hwsv ] && echo ' (HexenWorld'"'"'s sv_send.c), SV_Max* and the entity updates absent')"
 done
 # hwsv's message functions must be its sv_send.c's, not the Rust
@@ -226,6 +247,7 @@ while IFS= read -r obj; do
 	for sym in "${sound_symbols[@]}" SV_SoundEntityFits "${ents_symbols[@]}" \
 		SV_AddToFatPVS SV_FatPVS SV_EntityUpdateSize SV_EntityPriority \
 		"${connect_symbols[@]}" "${inv_symbols[@]}" "${spawn_symbols[@]}" \
+		"${init_symbols[@]}" \
 		SV_PrintMapChecklist SV_MapCheckThresh SV_MapCheckTitle; do
 		if nm "$obj" | grep -qE " [Tt] $sym\$"; then
 			echo "FAIL: ${obj#"$engine_build"/} still defines $sym" >&2
@@ -234,7 +256,7 @@ while IFS= read -r obj; do
 	done
 done <<<"$objects"
 echo "  $nobj Hexen II sv_main.c object(s): none defines the ported functions"
-stray=$(find "$engine_build" -name 'sv_main_sound_*.c.o' -o -name 'sv_main_ents_*.c.o' -o -name 'sv_main_datagram_*.c.o' -o -name 'sv_main_connect_*.c.o' -o -name 'sv_main_inv_*.c.o' -o -name 'sv_main_spawn_*.c.o' -o -name 'c_ref_ents.c.o' -o -name 'c_ref_connect.c.o' -o -name 'c_ref_inv.c.o' -o -name 'c_ref_spawn.c.o' -o -name 'inv_harness.c.o' -o -name 'spawn_harness.c.o' | wc -l)
+stray=$(find "$engine_build" -name 'sv_main_sound_*.c.o' -o -name 'sv_main_ents_*.c.o' -o -name 'sv_main_datagram_*.c.o' -o -name 'sv_main_connect_*.c.o' -o -name 'sv_main_inv_*.c.o' -o -name 'sv_main_spawn_*.c.o' -o -name 'c_ref_ents.c.o' -o -name 'c_ref_connect.c.o' -o -name 'c_ref_inv.c.o' -o -name 'c_ref_spawn.c.o' -o -name 'c_ref_init.c.o' -o -name 'inv_harness.c.o' -o -name 'spawn_harness.c.o' -o -name 'init_harness.c.o' | wc -l)
 [ "$stray" -eq 0 ] || {
 	echo "FAIL: $stray harness fixture object(s) in the engine build" >&2
 	exit 1

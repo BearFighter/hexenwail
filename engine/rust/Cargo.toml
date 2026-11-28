@@ -109,6 +109,11 @@ sv_main_inv = ["sv_main_sound"]
 # extern "C" calls resolved by the engine link, not feature dependencies, so
 # its differential harness can record each one.  world_hull is for cvt_c.
 sv_main_spawn = ["world_hull"]
+# F / slice F of #469: Hexen II's SV_Init, SV_Protocol_f, Max_Edicts_f,
+# SV_Edicts and Sv_Edicts_f.  All callees (cvar/command registration, Sys_Error,
+# the file writers, PR_GetString and SV_ProtocolName) stay extern "C", so the
+# differential harness can record them; no feature dependency is needed.
+sv_main_init = []
 
 [profile.release]
 # Unwinding across an FFI boundary is undefined behaviour. Fatal paths go

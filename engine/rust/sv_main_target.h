@@ -381,4 +381,82 @@ void		SvMainSpawn_EndLoadingPlaque (void);	/* SCR_EndLoadingPlaque () */
 /* GLQUAKE's &flush_textures; NULL elsewhere (glquake_build is 0) */
 int		*SvMainSpawn_FlushTextures (void);
 
+/* F / slice F of #469: sv_main.c's init and console commands.  Every cvar,
+ * sv, sv_protocol, sv_protocol_userset, sv_kingofhill, localmodels, pr_functions
+ * and the edict storage stay C-owned; the enum only names them to one accessor
+ * that hands out their addresses, so Rust never assumes cvar_t's layout. */
+typedef enum sv_main_init_cvar_e
+{
+	SV_MAIN_INIT_CVAR_MAXVELOCITY,
+	SV_MAIN_INIT_CVAR_GRAVITY,
+	SV_MAIN_INIT_CVAR_FRICTION,
+	SV_MAIN_INIT_CVAR_EDGEFRICTION,
+	SV_MAIN_INIT_CVAR_STOPSPEED,
+	SV_MAIN_INIT_CVAR_MAXSPEED,
+	SV_MAIN_INIT_CVAR_ACCELERATE,
+	SV_MAIN_INIT_CVAR_ALTNOCLIP,
+	SV_MAIN_INIT_CVAR_IDEALPITCHSCALE,
+	SV_MAIN_INIT_CVAR_IDEALROLLSCALE,
+	SV_MAIN_INIT_CVAR_AIM,
+	SV_MAIN_INIT_CVAR_NOSTEP,
+	SV_MAIN_INIT_CVAR_WALKPITCH,
+	SV_MAIN_INIT_CVAR_GAMEPLAYFIX_ELEVATORS,
+	SV_MAIN_INIT_CVAR_FREEZENONCLIENTS,
+	SV_MAIN_INIT_CVAR_MAX_EDICTS,
+	SV_MAIN_INIT_CVAR_SV_MAXDATAGRAM,
+	SV_MAIN_INIT_CVAR_CHEATS,
+	SV_MAIN_INIT_CVAR_GAMEPLAYFIX_RANDOM,
+	SV_MAIN_INIT_CVAR_PR_CHECKEXTENSION,
+	SV_MAIN_INIT_CVAR_HEXENWAIL_VERSION,
+	SV_MAIN_INIT_CVAR_FLYPITCH,
+	SV_MAIN_INIT_CVAR_DEBUGMOVESTEP,
+	SV_MAIN_INIT_CVAR_SOUND_DISTANCE,
+	SV_MAIN_INIT_CVAR_UPDATE_PLAYER,
+	SV_MAIN_INIT_CVAR_UPDATE_MONSTERS,
+	SV_MAIN_INIT_CVAR_UPDATE_MISSILES,
+	SV_MAIN_INIT_CVAR_UPDATE_MISC,
+	SV_MAIN_INIT_CVAR_NETSORT,
+	SV_MAIN_INIT_CVAR_CE_SCALE,
+	SV_MAIN_INIT_CVAR_CE_MAX_SIZE,
+	SV_MAIN_INIT_CVAR_COUNT
+} sv_main_init_cvar_t;
+
+typedef struct sv_main_init_facts_s
+{
+	/* protocol.h's versions and printsys.h's flags */
+	int	protocol_raven_111, protocol_raven_112, protocol_uqe_113;
+	int	protocol_uh2_114, protocol_hexenwail_1;
+	int	print_normal, print_safe, print_termonly;
+	/* header sizes and the offsets Rust reads through the accessors */
+	int	max_models;
+	size_t	localmodel_size;
+	size_t	sv_active, sv_time, sv_num_edicts;
+	size_t	edict_v, v_nextthink, v_classname, v_model;
+	size_t	v_think, v_touch, v_use;
+	size_t	function_size, function_s_name;
+	/* HW_VERSION_NUM, as the C casts it to float before Cvar_SetValueROM */
+	double	hw_version_num;
+} sv_main_init_facts_t;
+
+extern const sv_main_init_facts_t	SvMainInit_TargetFacts;
+
+void		*SvMainInit_Cvar (int index);		/* C-owned cvar_t address */
+int		SvMainInit_Argc (void);			/* Cmd_Argc () */
+const char	*SvMainInit_Argv (int i);		/* Cmd_Argv (i) */
+int		SvMainInit_LaunchArgc (void);		/* com_argc */
+const char	*SvMainInit_LaunchArgv (int i);		/* com_argv[i] */
+unsigned char	*SvMainInit_Server (void);		/* &sv */
+int		*SvMainInit_Protocol (void);		/* &sv_protocol */
+void		SvMainInit_SetProtocolUserset (int v);	/* sv_protocol_userset */
+int		*SvMainInit_KingOfHill (void);		/* &sv_kingofhill */
+char		*SvMainInit_LocalModels (void);	/* localmodels[0] */
+unsigned char	*SvMainInit_Functions (void);		/* pr_functions */
+unsigned char	*SvMainInit_Edicts (void);		/* sv.edicts */
+int		SvMainInit_EdictSize (void);		/* pr_edict_size */
+/* File output goes through these so the harness can record it; the engine
+ * build resolves them to FS_MakePath/fopen/fprintf/fclose. */
+void		*SvMainInit_OpenFile (const char *name);
+int		SvMainInit_PrintFile (void *file, const char *fmt, ...);
+void		SvMainInit_CloseFile (void *file);
+
 #endif	/* SV_MAIN_TARGET_H */
