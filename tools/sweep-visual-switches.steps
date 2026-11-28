@@ -4,15 +4,17 @@
 # Covers FXAA, HDR and its exposure, bloom, SSAO quality and both OIT modes.
 # Needs the retail data in <basedir>/data1.
 #
-# This is a same-binary gate.  Run the OLD and NEW binaries with identical
-# arguments and settings, then compare frame for frame:
+# This is a same-binary gate.  Run the SAME binary twice with identical
+# arguments and settings, then compare frame for frame; a before/after BUILD
+# comparison is not pass/fail, because a fixed switch is meant to change pixels:
 #
 #   A="-fsaa 0 +gamma 1 +map demo1 +r_farclip 65536 +gl_farclip 65536"
-#   STEPS=tools/sweep-visual-switches.steps ENGINE=$OLD \
-#     ./tools/headless-drive.sh script /tmp/vs-old ~/hexen2 $A
-#   STEPS=tools/sweep-visual-switches.steps ENGINE=$NEW \
-#     ./tools/headless-drive.sh script /tmp/vs-new ~/hexen2 $A
-#   ./tools/shot-diff.sh /tmp/vs-old /tmp/vs-new 200x24+100+576
+#   STEPS=tools/sweep-visual-switches.steps ENGINE=$BIN \
+#     ./tools/headless-drive.sh script /tmp/vs-a ~/hexen2 $A
+#   STEPS=tools/sweep-visual-switches.steps ENGINE=$BIN \
+#     ./tools/headless-drive.sh script /tmp/vs-b ~/hexen2 $A
+#   ./tools/shot-diff.sh /tmp/vs-a /tmp/vs-b 800x24+0+576
+#   ./tools/shot-effect-check.sh /tmp/vs-a 800x24+0+576
 #
 # For GL against -gpu instead, use PSNR_MIN and calibrate it from three runs
 # of one binary (see tools/sweep-world-gpu.steps); Mesa's two rasterizers agree
@@ -28,10 +30,13 @@
 # 11..13 are the pools with OIT off, weighted (1) and moment-based (2), which
 # is the mode that needs literal SDL_GPU layout IDs in oit.inc.
 #
-# Every camera is static and paused, the sky scroll is stopped, particles and
-# dynamic lights are off and no console frame is taken, so no animated cursor
-# mask is needed.  The one mask above is the mini status bar's health: the
-# player can take a knock at spawn before god is on.  REPORT-VISUAL-* rechecks
+# Every camera is set while PAUSED.  Moving with `setpos` and only then
+# `pause` let the still-moving player drift for two seconds; two runs of one
+# binary then differed by ~30k pixels and no diff gate could be trusted.
+# The sky scroll is stopped, particles and dynamic lights are off and no
+# console frame is taken, so no animated cursor mask is needed.  The one mask
+# above is the whole bottom status strip: its health and ammo digits keep
+# changing between runs even while the game is paused.  REPORT-VISUAL-* rechecks
 # the switch values and the unrouted GL count on the last camera.
 
 sleep 20
@@ -87,12 +92,12 @@ cmd r_bloom_threshold 1
 cmd r_ssao 0
 cmd r_ssao_debug 0
 cmd r_oit 0
+cmd pause
 sleep 2
 
 # --- graveyard: the identity chain and the screen-space switches ---
 cmd setpos -918 -2034 0 -20 45 0
 sleep 2
-cmd pause
 shot 01-base-farclip
 cmd gl_fxaa 1
 shot 02-fxaa
@@ -108,12 +113,10 @@ cmd r_bloom_threshold 0.5
 shot 05-bloom
 cmd r_bloom 0
 cmd r_bloom_threshold 1
-cmd pause
 
 # --- torch room: a bright source for the bloom / HDR combination ---
 cmd setpos -1536 1900 -450 0 90 0
 sleep 2
-cmd pause
 cmd gl_glows 1
 cmd gl_missile_glows 1
 cmd gl_other_glows 1
@@ -130,34 +133,29 @@ cmd gl_glows 0
 cmd gl_missile_glows 0
 cmd gl_other_glows 0
 cmd gl_glow_intensity 0.4
-cmd pause
 
 # --- SSAO: a contact-casting alias model on the graveyard wall ---
 cmd r_drawentities 1
 cmd testentity models/tombstn1.mdl -560 -2200 184 0 0 0
 cmd setpos -312 -2128 284 0 0 0
 sleep 2
-cmd pause
 shot 08-ssao-off
 cmd r_ssao 1
 shot 09-ssao-low
 cmd r_ssao 3
 shot 10-ssao-high
 cmd r_ssao 0
-cmd pause
 cmd r_drawentities 0
 
 # --- OIT: translucent water into the scene FBO at the same far clip ---
 cmd setpos -1007 2200 -442 25 152 0
 sleep 2
-cmd pause
 shot 11-oit-off
 cmd r_oit 1
 shot 12-oit-weighted
 cmd r_oit 2
 shot 13-oit-moment
 cmd r_oit 0
-cmd pause
 
 # --- report: switch values and unrouted calls on a stable camera ---
 cmd gpu_unrouted reset

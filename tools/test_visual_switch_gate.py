@@ -2,11 +2,13 @@
 """Keep the visual-switch presets, safe mode, menu rows and diff sweep in step.
 
 The large-world contract moves both far clips to 65536 and asks HDR, bloom,
-SSAO, FXAA and both OIT modes to work there.  Four places have to agree or a
+SSAO, FXAA and both OIT modes to work there.  Five places have to agree or a
 "preset" silently leaves one switch behind:
 
   * M_Display_AdjustSliders' PRESET_EFFECTS macro and its seven call sites;
   * GL_RendererSafe_f, which must put every one of those switches back;
+  * PP_NeedsPostProcess, which must keep the scene FBO alive when only r_ssao
+    is on, or SS_Active() silently skips every SSAO stage;
   * the Rendering submenu, whose new rows must be hidden on WEBSOFT, gated on
     the capability the engine reports, driven by name and noted with the cvar;
   * tools/sweep-visual-switches.steps, the same-binary screenshot-diff gate
@@ -21,6 +23,7 @@ import sys
 ROOT = Path(__file__).resolve().parents[1]
 menu = (ROOT / "engine/hexen2/menu.c").read_text(encoding="utf-8")
 safe = (ROOT / "engine/h2shared/gl_vidsdl.c").read_text(encoding="utf-8")
+post = (ROOT / "engine/h2shared/gl_postprocess.c").read_text(encoding="utf-8")
 steps = ROOT / "tools/sweep-visual-switches.steps"
 errors = []
 
@@ -122,6 +125,14 @@ else:
     if "Cvar_SetValue" in body:
         errors.append("renderer_safe uses Cvar_SetValue; these defaults are strings")
 
+# --- the SSAO scene FBO -----------------------------------------------------
+post_body = function_body(post, r"static\s+qboolean\s+PP_NeedsPostProcess\s*\(void\)")
+if not post_body:
+    errors.append("gl_postprocess.c: PP_NeedsPostProcess not found")
+elif not re.search(r'Cvar_VariableValue\s*\(\s*"r_ssao"\s*\)\s*>\s*0', post_body):
+    errors.append("gl_postprocess.c: PP_NeedsPostProcess does not keep the "
+                  "scene FBO for r_ssao; the SSAO row would be a no-op")
+
 # --- the Rendering submenu rows ---------------------------------------------
 for row, (cvar, cap) in ROWS.items():
     if not re.search(r"\b%s\s*," % row, menu):
@@ -160,6 +171,13 @@ else:
     if "renderer_safe" in commands and "r_farclip 65536" in commands:
         if commands.index("renderer_safe") > commands.index("r_farclip 65536"):
             errors.append("sweep-visual-switches.steps: renderer_safe must run before the far clips")
+    first_setpos = next((i for i, c in enumerate(commands)
+                         if c.startswith("setpos ")), None)
+    if first_setpos is None:
+        errors.append("sweep-visual-switches.steps: no `cmd setpos` camera")
+    elif "pause" not in commands or commands.index("pause") > first_setpos:
+        errors.append("sweep-visual-switches.steps: pause before the first "
+                      "setpos, or the player drifts and no diff gate is stable")
     for shot in SHOTS:
         if f"shot {shot}" not in text:
             errors.append(f"sweep-visual-switches.steps: missing shot {shot}")
@@ -167,8 +185,13 @@ else:
         errors.append("sweep-visual-switches.steps: no console frame (the cursor blinks)")
     if "shot-diff.sh" not in text:
         errors.append("sweep-visual-switches.steps: header has no shot-diff invocation")
+    if "shot-effect-check.sh" not in text:
+        errors.append("sweep-visual-switches.steps: header has no shot-effect-check invocation")
+    if "800x24+0+576" not in text:
+        errors.append("sweep-visual-switches.steps: mask the whole bottom status "
+                      "strip; health and ammo digits reach past x=300")
 
 if errors:
     sys.exit("FAIL test_visual_switch_gate:\n  " + "\n  ".join(errors))
-print("PASS visual switches: seven presets, safe mode, three menu rows and the "
+print("PASS visual switches: seven presets, safe mode, SSAO scene FBO, three menu rows and the "
       "large-farclip screenshot sweep agree")

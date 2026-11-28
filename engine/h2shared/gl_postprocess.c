@@ -477,6 +477,12 @@ static qboolean PP_NeedsPostProcess (void)
 	 * unrelated effect (FXAA, HDR, …) to "wake" the pipeline. */
 	if (r_oit.integer)
 		return true;
+	/* SSAO is not a post chain of its own: it snapshots the scene FBO and
+	 * composites into it.  Without this, toggling the Rendering row or a
+	 * Display preset with only r_ssao set left GL_GetSceneFBO() == 0 and
+	 * SS_Active() skipped every stage, so the switch did nothing. */
+	if (Cvar_VariableValue("r_ssao") > 0)
+		return true;
 	if (r_bloom.integer)
 		return true;
 	return false;
